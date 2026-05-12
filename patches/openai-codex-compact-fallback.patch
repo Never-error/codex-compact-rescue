@@ -1,0 +1,138 @@
+diff --git a/codex-rs/core/src/compact_remote.rs b/codex-rs/core/src/compact_remote.rs
+index cc31d50..73e5160 100644
+--- a/codex-rs/core/src/compact_remote.rs
++++ b/codex-rs/core/src/compact_remote.rs
+@@ -29,15 +29,44 @@ use codex_protocol::items::ContextCompactionItem;
+ use codex_protocol::items::TurnItem;
+ use codex_protocol::models::BaseInstructions;
+ use codex_protocol::models::ResponseItem;
++use codex_protocol::openai_models::ModelInfo;
+ use codex_protocol::protocol::CompactedItem;
+ use codex_protocol::protocol::EventMsg;
+ use codex_protocol::protocol::TurnStartedEvent;
+ use codex_rollout_trace::CompactionCheckpointTracePayload;
+-use futures::TryFutureExt;
+ use tokio_util::sync::CancellationToken;
+ use tracing::error;
+ use tracing::info;
+ 
++const COMPACT_FALLBACK_SOURCE_MODEL: &str = "gpt-5.5";
++const COMPACT_FALLBACK_MODEL: &str = "gpt-5.4-mini";
++
++fn compact_request_settings_for(
++    sess: &Session,
++    turn_context: &TurnContext,
++) -> CompactConversationRequestSettings {
++    CompactConversationRequestSettings {
++        effort: turn_context.reasoning_effort,
++        summary: turn_context.reasoning_summary,
++        service_tier: if sess.services.auth_manager.auth_mode() == Some(AuthMode::ApiKey) {
++            None
++        } else {
++            turn_context.config.service_tier.clone()
++        },
++    }
++}
++
++fn fallback_model_info_for_remote_compact(model_info: &ModelInfo) -> Option<ModelInfo> {
++    if model_info.slug != COMPACT_FALLBACK_SOURCE_MODEL {
++        return None;
++    }
++
++    let mut fallback_model_info = model_info.clone();
++    fallback_model_info.slug = COMPACT_FALLBACK_MODEL.to_string();
++    fallback_model_info.display_name = COMPACT_FALLBACK_MODEL.to_string();
++    Some(fallback_model_info)
++}
++
+ pub(crate) async fn run_inline_remote_auto_compact_task(
+     sess: Arc<Session>,
+     turn_context: Arc<TurnContext>,
+@@ -189,25 +218,21 @@ async fn run_remote_compact_task_inner_impl(
+         output_schema: None,
+         output_schema_strict: true,
+     };
+-    let mut new_history = sess
++    let compact_result = sess
+         .services
+         .model_client
+         .compact_conversation_history(
+             &prompt,
+             &turn_context.model_info,
+-            CompactConversationRequestSettings {
+-                effort: turn_context.reasoning_effort,
+-                summary: turn_context.reasoning_summary,
+-                service_tier: if sess.services.auth_manager.auth_mode() == Some(AuthMode::ApiKey) {
+-                    None
+-                } else {
+-                    turn_context.config.service_tier.clone()
+-                },
+-            },
++            compact_request_settings_for(sess.as_ref(), turn_context.as_ref()),
+             &turn_context.session_telemetry,
+             &compaction_trace,
+         )
+-        .or_else(|err| async {
++        .await;
++
++    let mut new_history = match compact_result {
++        Ok(new_history) => new_history,
++        Err(err) => {
+             let total_usage_breakdown = sess.get_total_token_usage_breakdown().await;
+             let compact_request_log_data =
+                 build_compact_request_log_data(&prompt.input, &prompt.base_instructions.text);
+@@ -217,9 +242,51 @@ async fn run_remote_compact_task_inner_impl(
+                 total_usage_breakdown,
+                 &err,
+             );
+-            Err(err)
+-        })
+-        .await?;
++
++            let Some(fallback_model_info) =
++                fallback_model_info_for_remote_compact(&turn_context.model_info)
++            else {
++                return Err(err);
++            };
++
++            info!(
++                turn_id = %turn_context.sub_id,
++                original_model = %turn_context.model_info.slug,
++                fallback_model = %fallback_model_info.slug,
++                compact_error = %err,
++                "retrying remote compaction with fallback model"
++            );
++
++            match sess
++                .services
++                .model_client
++                .compact_conversation_history(
++                    &prompt,
++                    &fallback_model_info,
++                    compact_request_settings_for(sess.as_ref(), turn_context.as_ref()),
++                    &turn_context.session_telemetry,
++                    &compaction_trace,
++                )
++                .await
++            {
++                Ok(new_history) => new_history,
++                Err(fallback_err) => {
++                    let total_usage_breakdown = sess.get_total_token_usage_breakdown().await;
++                    let compact_request_log_data = build_compact_request_log_data(
++                        &prompt.input,
++                        &prompt.base_instructions.text,
++                    );
++                    log_remote_compact_failure(
++                        turn_context,
++                        &compact_request_log_data,
++                        total_usage_breakdown,
++                        &fallback_err,
++                    );
++                    return Err(fallback_err);
++                }
++            }
++        }
++    };
+     new_history = process_compacted_history(
+         sess.as_ref(),
+         turn_context.as_ref(),

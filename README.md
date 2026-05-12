@@ -1,6 +1,6 @@
 # Codex gpt-5.5 Compact Fallback Patch
 
-Unofficial patch workflow for making Codex Desktop `gpt-5.5` remote compact
+Patch and packaging workflow for making Codex Desktop `gpt-5.5` remote compact
 failures recoverable.
 
 The patch targets the compact failure path inside the Codex CLI bundled with
@@ -16,14 +16,12 @@ remote compact with gpt-5.5 fails
 -> continue the original turn
 ```
 
-> This repository does not publish patched Codex application binaries. The
-> intended release shape is a patcher-style package: source patch, installer,
-> verifier, rollback script, and checksums.
+This repository is designed for patcher-style releases. It does not distribute
+modified Codex application bundles.
 
-## Quick Start For Agents
+## Install With An Agent
 
-Use this prompt when another coding agent or model needs to install or maintain
-the patch on a local machine:
+Use this prompt with a local coding agent that has access to the target machine:
 
 ```text
 Install the Codex gpt-5.5 compact fallback patch on this machine.
@@ -49,20 +47,76 @@ remote compact with gpt-5.5 fails
 
 Agent checklist:
 
-1. Confirm the installed Codex app path.
-2. Confirm the bundled CLI path.
-3. Stop Codex Desktop before replacement.
-4. Create a timestamped backup of the original bundled CLI.
-5. Build or obtain the patched bundled CLI for the exact Codex version.
-6. Replace only the bundled CLI file.
-7. Preserve executable permissions.
-8. Start Codex Desktop.
-9. Verify patch marker strings.
-10. Verify fallback runtime logs after a compact failure occurs.
+1. Detect the platform.
+2. Locate the installed Codex app.
+3. Locate the bundled Codex CLI.
+4. Stop Codex Desktop before replacement.
+5. Back up the existing bundled CLI with a timestamped filename.
+6. Build or install the patched bundled CLI for the exact Codex version.
+7. Replace only the bundled CLI file.
+8. Preserve executable permissions.
+9. Start Codex Desktop.
+10. Verify patch marker strings.
+11. Verify fallback runtime logs after a compact failure occurs.
+12. Record the rollback command and backup path.
 
-## macOS Install Shape
+## Release Package Contract
 
-Expected local paths:
+Release assets are platform patcher packages, not complete modified Codex apps:
+
+```text
+codex-compact-fallback-vX.Y.Z.patch
+codex-compact-fallback-macos-universal.tar.gz
+codex-compact-fallback-windows-x64.zip
+codex-compact-fallback-linux-x64.tar.gz
+checksums.txt
+RELEASE_NOTES.md
+```
+
+Each platform package provides:
+
+```text
+install
+restore
+verify
+build
+patches/
+docs/
+```
+
+The installer must back up the user's current bundled CLI before replacement.
+The restore command must be able to put that backup back without requiring
+network access.
+
+## Build From Source
+
+Apply the source patch to a local OpenAI Codex checkout and build the `codex`
+CLI:
+
+```bash
+scripts/build.sh \
+  --source-dir /path/to/openai/codex \
+  --patch-file patches/openai-codex-compact-fallback.patch \
+  --out-dir dist/macos
+```
+
+The build script runs:
+
+```bash
+git apply --check patches/openai-codex-compact-fallback.patch
+git apply patches/openai-codex-compact-fallback.patch
+cargo build -p codex-cli --bin codex --release
+```
+
+Windows users can use the PowerShell equivalent:
+
+```powershell
+.\scripts\build.ps1 -SourceDir C:\path\to\openai\codex -OutDir .\dist\windows
+```
+
+## macOS
+
+Codex Desktop stores the bundled CLI here:
 
 ```bash
 APP_PATH="/Applications/Codex.app"
@@ -73,35 +127,57 @@ BACKUP_BIN="$APP_PATH/Contents/Resources/codex.backup-$(date +%Y%m%d-%H%M%S)"
 Backup and replace:
 
 ```bash
-cp "$CODEX_BIN" "$BACKUP_BIN"
-install -m 0755 ./dist/macos/codex "$CODEX_BIN"
+scripts/install.sh \
+  --codex-bin "$CODEX_BIN" \
+  --patched-bin ./dist/macos/codex \
+  --backup-dir "$APP_PATH/Contents/Resources" \
+  --yes
 ```
 
 Verify the installed binary:
 
 ```bash
-shasum -a 256 "$CODEX_BIN" "$BACKUP_BIN"
-strings "$CODEX_BIN" | rg 'retrying remote compaction with fallback model|gpt-5.4-mini|gpt-5.5'
+scripts/verify.sh --codex-bin "$CODEX_BIN"
 ```
 
 Rollback:
 
 ```bash
-install -m 0755 "$BACKUP_BIN" "$CODEX_BIN"
+scripts/restore.sh --codex-bin "$CODEX_BIN" --backup "$BACKUP_BIN" --yes
+```
+
+## Windows
+
+Use the PowerShell scripts with the Codex bundled CLI path for your installation:
+
+```powershell
+.\scripts\install.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -PatchedBin ".\dist\windows\codex.exe" -Yes
+.\scripts\verify.ps1 -CodexBin "C:\Path\To\Codex\codex.exe"
+.\scripts\restore.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -Backup "C:\Path\To\Codex\codex.exe.backup-YYYYMMDD-HHMMSS" -Yes
+```
+
+## Package A Release
+
+Create a platform patcher archive and checksum file:
+
+```bash
+release/package.sh --version v0.1.0 --platform macos-universal --out-dir dist/release
+release/package.sh --version v0.1.0 --platform linux-x64 --out-dir dist/release
+release/package.sh --version v0.1.0 --platform windows-x64 --out-dir dist/release
 ```
 
 ## Runtime Verification
 
-Patch presence and patch trigger are different checks.
+Patch presence and patch trigger are separate checks.
 
-Patch presence:
+Check patch marker strings:
 
 ```bash
 strings /Applications/Codex.app/Contents/Resources/codex | \
   rg 'retrying remote compaction with fallback model|gpt-5.4-mini|gpt-5.5'
 ```
 
-Fallback trigger:
+Check whether fallback compact was triggered:
 
 ```bash
 sqlite3 "$HOME/.codex/logs_2.sqlite" \
@@ -113,41 +189,16 @@ sqlite3 "$HOME/.codex/logs_2.sqlite" \
    limit 20;"
 ```
 
-Ordinary compact success:
+Check whether ordinary compaction succeeded:
 
 ```bash
 rg -n '"context_compacted"|type":"compacted"' "$HOME/.codex/sessions"
 ```
 
-Transport check for HTTP Responses:
+Check whether Codex is configured for HTTP Responses:
 
 ```bash
 rg -n 'model_provider|supports_websockets|responses_websockets' "$HOME/.codex/config.toml"
-```
-
-## Release Shape
-
-The target release format is platform patcher packages, not complete modified
-Codex apps:
-
-```text
-codex-compact-fallback-vX.Y.Z.patch
-codex-compact-fallback-macos-universal.tar.gz
-codex-compact-fallback-windows-x64.zip
-codex-compact-fallback-linux-x64.tar.gz
-checksums.txt
-RELEASE_NOTES.md
-```
-
-Each platform package should contain:
-
-```text
-install
-restore
-verify
-build
-patches/
-docs/
 ```
 
 ## Repository Layout
@@ -156,42 +207,47 @@ docs/
 .
 ├── README.md
 ├── LICENSE
+├── ROADMAP.md
 ├── docs/
 │   ├── operations-zh.md
 │   └── patched-binary-zh.md
-└── .gitignore
+├── patches/
+│   ├── README.md
+│   └── openai-codex-compact-fallback.patch
+├── scripts/
+│   ├── build.sh
+│   ├── install.sh
+│   ├── restore.sh
+│   ├── verify.sh
+│   ├── build.ps1
+│   ├── install.ps1
+│   ├── restore.ps1
+│   └── verify.ps1
+├── release/
+│   ├── README.md
+│   ├── RELEASE_NOTES.md
+│   └── package.sh
+└── tests/
 ```
 
-`docs/superpowers/` has been intentionally removed. This repository should read
-like an open-source patch project, not a record of internal agent planning.
+`patches/`, `scripts/`, and `release/` contain the reproducible patch and
+packaging workflow. `docs/` contains operator documentation.
 
-## Current Status
+## Safety
 
-This repository is being shaped into a patcher-style project. Release-grade
-patch content still needs to be added under `patches/`, and platform installer
-scripts still need to be added under `scripts/`.
+- Do not publish patched Codex application bundles.
+- Do not commit local session JSONL files or SQLite logs.
+- Do not expose tokens, account identifiers, private prompts, or full local
+  conversation history.
+- Keep fallback scoped to failed remote compact retry.
+- Keep normal user turns on the configured default model.
+- Always create a rollback backup before replacing a bundled CLI.
 
-Until those assets exist, agents should not claim this repository is a
-one-command installer. The README currently defines the behavior contract,
-installation shape, verification workflow, release shape, and safety rules.
+## 中文
 
-## Safety Rules
+这个项目提供一个 Codex Desktop `gpt-5.5` remote compact 失败的补丁与打包流程。
 
-- Do not publish patched Codex application binaries.
-- Do not include local tokens, account identifiers, raw session contents, or
-  private project prompts in public artifacts.
-- Treat `~/.codex/logs_2.sqlite` and `~/.codex/sessions/**/*.jsonl` as local
-  evidence sources, not files to commit.
-- Prefer fallback only for failed remote compact retry, not for normal user
-  turns.
-- Keep backup and rollback instructions next to any local binary replacement.
-
-## Chinese / 中文
-
-本项目专注于一个非官方补丁流程：让 Codex Desktop 在 `gpt-5.5` remote compact
-失败时，可以在同一个 turn 内自动 fallback 到较小模型重试，并继续原对话。
-
-目标行为：
+补丁目标是在 Codex 自己的 compact 出错路径里完成恢复：
 
 ```text
 remote compact with gpt-5.5 fails
@@ -202,10 +258,9 @@ remote compact with gpt-5.5 fails
 -> continue 原 turn
 ```
 
-这个仓库不发布修改后的 Codex App 整包，也不发布 patched Codex binary。目标发布
-形态是 patcher 包：源码补丁、安装脚本、验证脚本、回滚脚本和校验文件。
+本仓库面向 patcher 发布，不发布修改后的 Codex App 整包。
 
-### 给 Agent 的快速部署提示
+### 给 Agent 的安装提示
 
 把这段交给本地 coding agent：
 
@@ -232,19 +287,6 @@ remote compact with gpt-5.5 fails
 -> continue 原 turn
 ```
 
-Agent 执行清单：
-
-1. 确认已安装 Codex App 路径。
-2. 确认 bundled CLI 路径。
-3. 替换前退出 Codex Desktop。
-4. 为原 bundled CLI 创建带时间戳的备份。
-5. 为精确匹配的 Codex 版本构建或取得 patched bundled CLI。
-6. 只替换 bundled CLI 文件。
-7. 保留可执行权限。
-8. 启动 Codex Desktop。
-9. 验证补丁 marker 字符串。
-10. 等 compact failure 发生后验证 fallback runtime 日志。
-
 ### macOS 安装形态
 
 ```bash
@@ -256,35 +298,33 @@ BACKUP_BIN="$APP_PATH/Contents/Resources/codex.backup-$(date +%Y%m%d-%H%M%S)"
 备份并替换：
 
 ```bash
-cp "$CODEX_BIN" "$BACKUP_BIN"
-install -m 0755 ./dist/macos/codex "$CODEX_BIN"
+scripts/install.sh \
+  --codex-bin "$CODEX_BIN" \
+  --patched-bin ./dist/macos/codex \
+  --backup-dir "$APP_PATH/Contents/Resources" \
+  --yes
 ```
 
 验证：
 
 ```bash
-shasum -a 256 "$CODEX_BIN" "$BACKUP_BIN"
-strings "$CODEX_BIN" | rg 'retrying remote compaction with fallback model|gpt-5.4-mini|gpt-5.5'
+scripts/verify.sh --codex-bin "$CODEX_BIN"
 ```
 
 回滚：
 
 ```bash
-install -m 0755 "$BACKUP_BIN" "$CODEX_BIN"
+scripts/restore.sh --codex-bin "$CODEX_BIN" --backup "$BACKUP_BIN" --yes
 ```
 
 ### 运行时验证
 
 补丁存在和补丁触发是两件事。
 
-补丁是否存在：
-
 ```bash
 strings /Applications/Codex.app/Contents/Resources/codex | \
   rg 'retrying remote compaction with fallback model|gpt-5.4-mini|gpt-5.5'
 ```
-
-fallback 是否触发：
 
 ```bash
 sqlite3 "$HOME/.codex/logs_2.sqlite" \
@@ -301,17 +341,6 @@ sqlite3 "$HOME/.codex/logs_2.sqlite" \
 ```bash
 rg -n '"context_compacted"|type":"compacted"' "$HOME/.codex/sessions"
 ```
-
-### 当前状态
-
-这个仓库正在整理成 patcher 风格项目。后续还需要补：
-
-- `patches/`：真实源码级补丁。
-- `scripts/`：各平台 install / restore / verify / build 脚本。
-- release asset：各平台 patcher 包、checksum、release notes。
-
-在这些内容补齐前，不能声称这是一个一键安装器。当前 README 的作用是让其他
-agent/模型快速理解补丁目标、安装边界、验证方式和安全规则。
 
 ## License
 

@@ -1,0 +1,40 @@
+# Release Notes
+
+## Codex gpt-5.5 Compact Fallback Patch
+
+This release packages the source-level compact fallback patch and platform
+patcher scripts.
+
+## Assets
+
+- Source patch under `patches/`
+- Build, install, restore, and verify scripts under `scripts/`
+- Operator documentation under `docs/`
+- SHA-256 checksums in `checksums.txt`
+
+## Safety
+
+This release does not include a modified Codex application bundle. Installers
+operate on a user's local Codex installation and create a backup before
+replacement.
+
+## Verification
+
+After installation, verify marker strings:
+
+```bash
+strings /Applications/Codex.app/Contents/Resources/codex | \
+  rg 'retrying remote compaction with fallback model|gpt-5.4-mini|gpt-5.5'
+```
+
+Verify fallback trigger logs:
+
+```bash
+sqlite3 "$HOME/.codex/logs_2.sqlite" \
+  "select id, datetime(timestamp, 'unixepoch'), level, target, feedback_log_body
+   from logs
+   where target = 'codex_core::compact_remote'
+     and feedback_log_body like '%fallback model%'
+   order by id desc
+   limit 20;"
+```

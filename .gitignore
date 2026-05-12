@@ -9,3 +9,4 @@ archived_sessions/
 state.json
 locks/
 codex_daily_token_usage*.svg
+dist/
