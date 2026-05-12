@@ -5,6 +5,12 @@
 This release packages the source-level compact fallback patch and platform
 patcher scripts.
 
+Compatible target for this patcher release:
+
+- `openai/codex` `codex-rs/core/src/compact_remote.rs`
+- Verified target blob: `cc31d50b13268417fa34d8262a7c3682cda8912e`
+- Locally observed Codex Desktop bundled CLI: `codex-cli 0.130.0-alpha.5`
+
 ## Assets
 
 - Source patch under `patches/`

@@ -12,10 +12,13 @@ development status and release planning.
   - Patch marker string used by verification scripts.
 
 - `scripts/`
-  - `build` for constructing the patched bundled CLI.
-  - `install` for backing up and replacing the bundled CLI.
-  - `restore` for rollback from backup.
-  - `verify` for hash, marker-string, and local-log checks.
+  - `scripts/build.sh` and `scripts/build.ps1` for constructing the patched
+    bundled CLI.
+  - `scripts/install.sh` and `scripts/install.ps1` for backing up and replacing
+    the bundled CLI.
+  - `scripts/restore.sh` and `scripts/restore.ps1` for rollback from backup.
+  - `scripts/verify.sh` and `scripts/verify.ps1` for hash, marker-string, and
+    local-log checks.
 
 - `release/`
   - Platform package builder.
@@ -41,8 +44,10 @@ development status and release planning.
   - Emits `retrying remote compaction with fallback model` for verification.
 
 - Platform scripts:
-  - Unix/macOS/Linux: `scripts/build.sh`, `install.sh`, `restore.sh`, `verify.sh`
-  - Windows PowerShell: `scripts/build.ps1`, `install.ps1`, `restore.ps1`, `verify.ps1`
+  - Unix/macOS/Linux: `scripts/build.sh`, `scripts/install.sh`,
+    `scripts/restore.sh`, `scripts/verify.sh`
+  - Windows PowerShell: `scripts/build.ps1`, `scripts/install.ps1`,
+    `scripts/restore.ps1`, `scripts/verify.ps1`
 
 - Release packaging:
   - `release/package.sh`
@@ -55,7 +60,11 @@ development status and release planning.
 
 ## Current Priority
 
-1. Run a full Rust build against a clean upstream checkout.
-2. Add CI that validates `git apply --check`, shell tests, and release packaging.
-3. Add platform-specific Codex app path discovery.
-4. Publish the first GitHub release with macOS, Linux, and Windows patcher assets.
+1. Run a full Rust build against a clean upstream checkout for each supported
+   Codex release target.
+2. Add CI that validates `git apply --check`, shell tests, and release
+   packaging.
+3. Add platform-specific Codex app path discovery so install commands need fewer
+   manual paths.
+4. Decide whether future releases should include root-level wrapper commands in
+   addition to the existing `scripts/` entrypoints.

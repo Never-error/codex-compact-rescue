@@ -4,7 +4,7 @@ Release packaging files live here.
 
 Release packages should include:
 
-- platform install, restore, verify, and build scripts
+- platform build, install, restore, and verify scripts under `scripts/`
 - source-level patch files
 - documentation
 - checksums

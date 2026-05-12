@@ -23,6 +23,84 @@ remote compact with gpt-5.5 fails
 This repository is designed for patcher-style releases. It does not distribute
 modified Codex application bundles.
 
+## Compatibility
+
+Current source patch:
+
+- Patch file: `patches/openai-codex-compact-fallback.patch`
+- Upstream target: `openai/codex` `codex-rs/core/src/compact_remote.rs`
+- Verified target blob: `cc31d50b13268417fa34d8262a7c3682cda8912e`
+- Checked date: 2026-05-12
+- Locally observed Codex Desktop bundled CLI: `codex-cli 0.130.0-alpha.5`
+
+Always run `git apply --check` against your OpenAI Codex checkout before
+building. If the upstream compact implementation changed, stop and rebase the
+patch instead of forcing it.
+
+You can check the target file blob with:
+
+```bash
+git -C /path/to/openai/codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
+```
+
+## Quick Start
+
+Download a package from the release page:
+
+https://github.com/Never-error/codex-compact-rescue/releases
+
+Choose the asset for your platform:
+
+```text
+macOS:   codex-compact-fallback-vX.Y.Z-macos-universal.tar.gz
+Linux:   codex-compact-fallback-vX.Y.Z-linux-x64.tar.gz
+Windows: codex-compact-fallback-vX.Y.Z-windows-x64.zip
+```
+
+The release packages contain scripts and the source patch. They do not contain
+a patched Codex binary. Build the patched CLI locally, then install it into the
+Codex Desktop app.
+
+macOS example:
+
+```bash
+tar -xzf codex-compact-fallback-vX.Y.Z-macos-universal.tar.gz
+cd codex-compact-fallback-vX.Y.Z-macos-universal
+
+git clone https://github.com/openai/codex /tmp/openai-codex
+git -C /tmp/openai-codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
+scripts/build.sh --source-dir /tmp/openai-codex --out-dir dist/macos
+
+APP_PATH="/Applications/Codex.app"
+CODEX_BIN="$APP_PATH/Contents/Resources/codex"
+
+scripts/install.sh \
+  --codex-bin "$CODEX_BIN" \
+  --patched-bin dist/macos/codex \
+  --backup-dir "$APP_PATH/Contents/Resources" \
+  --yes
+
+scripts/verify.sh --codex-bin "$CODEX_BIN"
+```
+
+Linux uses the same `scripts/build.sh`, `scripts/install.sh`, and
+`scripts/verify.sh` flow, but you must pass the Codex CLI path used by your
+Linux installation.
+
+Windows:
+
+```powershell
+Expand-Archive .\codex-compact-fallback-vX.Y.Z-windows-x64.zip
+cd .\codex-compact-fallback-vX.Y.Z-windows-x64
+
+git clone https://github.com/openai/codex C:\temp\openai-codex
+git -C C:\temp\openai-codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
+.\scripts\build.ps1 -SourceDir C:\temp\openai-codex -OutDir .\dist\windows
+
+.\scripts\install.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -PatchedBin ".\dist\windows\codex.exe" -Yes
+.\scripts\verify.ps1 -CodexBin "C:\Path\To\Codex\codex.exe"
+```
+
 ## Install With An Agent
 
 Use this prompt with a local coding agent that has access to the target machine:
@@ -35,6 +113,7 @@ Install the Codex gpt-5.5 compact fallback patch on this machine.
 Rules:
 - Do not publish, upload, or leak any Codex binary.
 - Detect the platform and installed Codex app path.
+- Check that the OpenAI Codex checkout matches the documented compatibility target.
 - Back up the existing bundled Codex CLI before replacing anything.
 - Install only a patched bundled CLI that adds remote compact fallback behavior.
 - Keep normal user turns on the configured default model.
@@ -56,40 +135,44 @@ Agent checklist:
 1. Detect the platform.
 2. Locate the installed Codex app.
 3. Locate the bundled Codex CLI.
-4. Stop Codex Desktop before replacement.
-5. Back up the existing bundled CLI with a timestamped filename.
-6. Build or install the patched bundled CLI for the exact Codex version.
-7. Replace only the bundled CLI file.
-8. Preserve executable permissions.
-9. Start Codex Desktop.
-10. Verify patch marker strings.
-11. Verify fallback runtime logs after a compact failure occurs.
-12. Record the rollback command and backup path.
+4. Check patch compatibility with `git apply --check`.
+5. Stop Codex Desktop before replacement.
+6. Back up the existing bundled CLI with a timestamped filename.
+7. Build or install the patched bundled CLI for the exact Codex version.
+8. Replace only the bundled CLI file.
+9. Preserve executable permissions.
+10. Start Codex Desktop.
+11. Verify patch marker strings.
+12. Verify fallback runtime logs after a compact failure occurs.
+13. Record the rollback command and backup path.
 
 ## Release Package Contract
 
 Release assets are platform patcher packages, not complete modified Codex apps:
 
 ```text
-codex-compact-fallback-vX.Y.Z.patch
-codex-compact-fallback-macos-universal.tar.gz
-codex-compact-fallback-windows-x64.zip
-codex-compact-fallback-linux-x64.tar.gz
+codex-compact-fallback-vX.Y.Z-macos-universal.tar.gz
+codex-compact-fallback-vX.Y.Z-linux-x64.tar.gz
+codex-compact-fallback-vX.Y.Z-windows-x64.zip
 checksums.txt
-RELEASE_NOTES.md
 ```
 
 Each platform package provides:
 
 ```text
-install
-restore
-verify
-build
+scripts/build.sh
+scripts/install.sh
+scripts/restore.sh
+scripts/verify.sh
+scripts/build.ps1
+scripts/install.ps1
+scripts/restore.ps1
+scripts/verify.ps1
 patches/
 docs/
 README.md
 README.zh-CN.md
+RELEASE_NOTES.md
 ```
 
 The installer must back up the user's current bundled CLI before replacement.

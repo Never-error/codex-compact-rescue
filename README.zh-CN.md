@@ -22,6 +22,81 @@ remote compact with gpt-5.5 fails
 
 本仓库面向 patcher 风格发布，不分发修改后的 Codex App 整包。
 
+## 兼容性
+
+当前源码补丁：
+
+- 补丁文件：`patches/openai-codex-compact-fallback.patch`
+- 上游目标：`openai/codex` 的 `codex-rs/core/src/compact_remote.rs`
+- 已验证目标 blob：`cc31d50b13268417fa34d8262a7c3682cda8912e`
+- 检查日期：2026-05-12
+- 本机观测到的 Codex Desktop bundled CLI：`codex-cli 0.130.0-alpha.5`
+
+构建前必须先对你的 OpenAI Codex checkout 运行 `git apply --check`。如果上游
+compact 实现已经变化，应停止并重新 rebase 补丁，不要强行应用。
+
+可以用下面的命令检查目标文件 blob：
+
+```bash
+git -C /path/to/openai/codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
+```
+
+## 快速开始
+
+从 release 页面下载平台包：
+
+https://github.com/Never-error/codex-compact-rescue/releases
+
+按平台选择资产：
+
+```text
+macOS:   codex-compact-fallback-vX.Y.Z-macos-universal.tar.gz
+Linux:   codex-compact-fallback-vX.Y.Z-linux-x64.tar.gz
+Windows: codex-compact-fallback-vX.Y.Z-windows-x64.zip
+```
+
+release 包只包含脚本和源码补丁，不包含 patched Codex binary。需要先在本机构建
+patched CLI，再安装到 Codex Desktop App 内。
+
+macOS 示例：
+
+```bash
+tar -xzf codex-compact-fallback-vX.Y.Z-macos-universal.tar.gz
+cd codex-compact-fallback-vX.Y.Z-macos-universal
+
+git clone https://github.com/openai/codex /tmp/openai-codex
+git -C /tmp/openai-codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
+scripts/build.sh --source-dir /tmp/openai-codex --out-dir dist/macos
+
+APP_PATH="/Applications/Codex.app"
+CODEX_BIN="$APP_PATH/Contents/Resources/codex"
+
+scripts/install.sh \
+  --codex-bin "$CODEX_BIN" \
+  --patched-bin dist/macos/codex \
+  --backup-dir "$APP_PATH/Contents/Resources" \
+  --yes
+
+scripts/verify.sh --codex-bin "$CODEX_BIN"
+```
+
+Linux 使用同一套 `scripts/build.sh`、`scripts/install.sh` 和
+`scripts/verify.sh` 流程，但需要传入你本机 Linux 安装实际使用的 Codex CLI 路径。
+
+Windows：
+
+```powershell
+Expand-Archive .\codex-compact-fallback-vX.Y.Z-windows-x64.zip
+cd .\codex-compact-fallback-vX.Y.Z-windows-x64
+
+git clone https://github.com/openai/codex C:\temp\openai-codex
+git -C C:\temp\openai-codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
+.\scripts\build.ps1 -SourceDir C:\temp\openai-codex -OutDir .\dist\windows
+
+.\scripts\install.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -PatchedBin ".\dist\windows\codex.exe" -Yes
+.\scripts\verify.ps1 -CodexBin "C:\Path\To\Codex\codex.exe"
+```
+
 ## 用 Agent 安装
 
 把这段交给能访问目标机器的本地 coding agent：
@@ -34,6 +109,7 @@ remote compact with gpt-5.5 fails
 规则：
 - 不要发布、上传或泄漏任何 Codex binary。
 - 自动识别平台和已安装的 Codex App 路径。
+- 检查 OpenAI Codex checkout 是否匹配文档里的兼容目标。
 - 替换任何文件前，必须备份现有 bundled Codex CLI。
 - 只安装带 remote compact fallback 行为的 patched bundled CLI。
 - 正常用户 turn 继续使用当前默认模型。
@@ -56,40 +132,44 @@ Agent 执行清单：
 1. 识别平台。
 2. 定位已安装的 Codex App。
 3. 定位 bundled Codex CLI。
-4. 替换前停止 Codex Desktop。
-5. 用带时间戳的文件名备份当前 bundled CLI。
-6. 为精确匹配的 Codex 版本构建或安装 patched bundled CLI。
-7. 只替换 bundled CLI 文件。
-8. 保留可执行权限。
-9. 启动 Codex Desktop。
-10. 验证补丁 marker 字符串。
-11. 等 compact failure 发生后验证 fallback runtime 日志。
-12. 记录回滚命令和备份路径。
+4. 用 `git apply --check` 检查补丁兼容性。
+5. 替换前停止 Codex Desktop。
+6. 用带时间戳的文件名备份当前 bundled CLI。
+7. 为精确匹配的 Codex 版本构建或安装 patched bundled CLI。
+8. 只替换 bundled CLI 文件。
+9. 保留可执行权限。
+10. 启动 Codex Desktop。
+11. 验证补丁 marker 字符串。
+12. 等 compact failure 发生后验证 fallback runtime 日志。
+13. 记录回滚命令和备份路径。
 
 ## Release 包契约
 
 Release 资产是平台 patcher 包，不是修改后的 Codex App 整包：
 
 ```text
-codex-compact-fallback-vX.Y.Z.patch
-codex-compact-fallback-macos-universal.tar.gz
-codex-compact-fallback-windows-x64.zip
-codex-compact-fallback-linux-x64.tar.gz
+codex-compact-fallback-vX.Y.Z-macos-universal.tar.gz
+codex-compact-fallback-vX.Y.Z-linux-x64.tar.gz
+codex-compact-fallback-vX.Y.Z-windows-x64.zip
 checksums.txt
-RELEASE_NOTES.md
 ```
 
 每个平台包提供：
 
 ```text
-install
-restore
-verify
-build
+scripts/build.sh
+scripts/install.sh
+scripts/restore.sh
+scripts/verify.sh
+scripts/build.ps1
+scripts/install.ps1
+scripts/restore.ps1
+scripts/verify.ps1
 patches/
 docs/
 README.md
 README.zh-CN.md
+RELEASE_NOTES.md
 ```
 
 安装器必须在替换前备份用户当前 bundled CLI。回滚命令必须不依赖网络即可恢复备份。
