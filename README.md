@@ -1,16 +1,17 @@
 # Codex Compact Rescue
 
-Codex Compact Rescue is an unofficial, local-first recovery plan for Codex
+Codex Compact Rescue is an unofficial, local-first recovery project for Codex
 sessions that fail during remote context compaction.
 
-The project documents a practical path for keeping the original Codex thread
-usable when remote compact requests fail on a larger model. The main idea is to
-detect compact failures, retry the compact work with a smaller fallback model,
-install the compacted history, and let the original conversation continue.
+The local proof of concept was implemented by patching the Codex Desktop bundled
+CLI at the compact-failure path: when remote compact fails on a larger model,
+the same turn retries compaction with a smaller fallback model, installs the
+compacted history, emits the normal compaction events, and continues the
+original conversation.
 
 > This repository does not include or distribute patched Codex binaries. It is a
-> documentation and implementation-plan repository for operators who want a
-> reproducible, auditable rescue layer.
+> documentation and implementation-plan repository that describes the behavior,
+> verification workflow, and safer portable alternatives.
 
 ## Background
 
@@ -25,18 +26,44 @@ stream disconnected before completion: error sending request for url (https://ch
 When this happens, the user-facing turn can appear disconnected or stalled even
 though the underlying session still exists. Switching to a smaller model for the
 compact operation has been observed to succeed more reliably, so this project
-explores two compatible recovery paths:
+distinguishes two compatible recovery paths:
 
 - **Internal fallback compact model:** retry the failed compact operation in the
-  same turn with a fallback model such as `gpt-5.4-mini`, then emit the normal
-  compaction events.
+  same turn with a fallback model such as `gpt-5.4-mini`, then install compacted
+  history and emit the normal compaction events. This is the path used by the
+  local patched proof of concept.
 - **CLI original-session rescue:** detect compact failures from local logs and
   resume the same thread with a maintenance-only turn that uses a smaller model
-  to trigger compaction.
+  to trigger compaction. This is the safer portable fallback design documented
+  for open-source implementation.
 
 The first path is closest to native automatic compaction. The second path is more
 portable because it can be built as a local command-line tool without shipping
 modified application binaries.
+
+## Local Patch Behavior
+
+The internal patch is intended to behave like native automatic compaction:
+
+```text
+remote compact with gpt-5.5 fails
+-> same turn retries compact with fallback model
+-> compacted history is installed
+-> context_compacted / thread compacted event is emitted
+-> original turn continues
+```
+
+Operationally, that means the patched Codex binary is a local machine artifact:
+
+1. Back up the original bundled CLI from the Codex app.
+2. Replace the bundled CLI with a patched build.
+3. Keep normal user turns on the configured default model.
+4. Use the fallback model only for the failed compact retry path.
+5. Verify behavior from local logs and session JSONL markers.
+
+The repository intentionally avoids publishing the modified binary. A public
+implementation should ship source code, patch notes, tests, and runbooks rather
+than an opaque application replacement.
 
 ## Repository Layout
 
@@ -124,9 +151,11 @@ post-run verification of a new `context_compacted` event.
 
 ## Status
 
-This repository currently contains the feasibility analysis, implementation
-plan, and operating runbook. The implementation plan is written so it can be
-executed task-by-task into a standalone Python standard-library CLI.
+This repository currently contains the local patch background, feasibility
+analysis, implementation plan, and operating runbook. The implementation plan is
+also written so it can be executed task-by-task into a standalone Python
+standard-library CLI for users who do not want to replace their local Codex
+binary.
 
 ## License
 

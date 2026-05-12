@@ -1,7 +1,9 @@
 # Codex Compact Rescue 操作说明
 
-本文记录 compact 失败救援层的日常检查、验证和回滚思路。命令默认在 macOS
-本机执行，并使用 `$HOME` 避免暴露个人路径。
+本文记录 compact 失败救援层的日常检查、验证和回滚思路。我们本机实际做过的
+核心实现，是替换 Codex Desktop 内置的 CLI，在 remote compact 失败路径里加
+fallback compact model 重试。命令默认在 macOS 本机执行，并使用 `$HOME` 避免
+暴露个人路径。
 
 ## 1. 问题现象
 
@@ -83,7 +85,43 @@ sqlite3 "$HOME/.codex/logs_2.sqlite" \
 - 有 fallback 日志：fallback compact 模型路径触发过。
 - 只有 HTTP Responses 请求：只能说明 WebSocket 绕过配置生效，不能说明 compact fallback 触发。
 
-## 5. CLI 原地救援命令形态
+## 5. 本机内部补丁实现形态
+
+本机补丁的目标不是新开会话，也不是让用户手动 `/compact`，而是在 Codex 自己
+的出错位置做 recoverable fallback：
+
+```text
+remote compact with gpt-5.5 fails
+-> same turn 内部切到 fallback model
+-> retry compact
+-> install compacted history
+-> emit context_compacted / thread compacted
+-> continue 原 turn
+```
+
+验证补丁是否仍在当前 Codex App 内：
+
+```bash
+shasum -a 256 /Applications/Codex.app/Contents/Resources/codex
+strings /Applications/Codex.app/Contents/Resources/codex | rg 'retrying remote compaction with fallback model|gpt-5.4-mini|gpt-5.5'
+```
+
+验证补丁是否真正触发，不能只看普通 `context_compacted`。应优先看 compact 模块
+是否出现 fallback 日志：
+
+```bash
+sqlite3 "$HOME/.codex/logs_2.sqlite" \
+  "select id, datetime(timestamp, 'unixepoch'), level, target, feedback_log_body
+   from logs
+   where target = 'codex_core::compact_remote'
+     and feedback_log_body like '%fallback model%'
+   order by id desc
+   limit 20;"
+```
+
+公开仓库不发布这个替换后的二进制，只记录行为、验证方法和可复现实现计划。
+
+## 6. CLI 原地救援命令形态
 
 维护 turn 应当使用较小模型，并明确禁止继续项目工作：
 
@@ -99,7 +137,7 @@ codex exec resume <thread_id> \
 
 自动化实现时必须默认 dry-run。只有显式 `--execute` 才能真正恢复 thread。
 
-## 6. 自动化救援的安全门
+## 7. 自动化救援的安全门
 
 实现 CLI 救援层时至少要有这些保护：
 
@@ -110,7 +148,7 @@ codex exec resume <thread_id> \
 - 救援后必须看到新的 `context_compacted` 才能标记成功。
 - 维护 turn 必须 `--disable goals`，避免污染用户原本的 Goal 状态。
 
-## 7. 回滚和升级
+## 8. 回滚和升级
 
 如果采用应用内补丁或本地二进制替换，必须保留原始文件备份。升级 Codex App 后应重新验证：
 
@@ -121,7 +159,7 @@ strings /Applications/Codex.app/Contents/Resources/codex | rg 'fallback model|gp
 
 如果 hash 变化或关键字符串不存在，说明升级可能覆盖了本地补丁，需要重新评估补丁是否仍适配新版本。
 
-## 8. 不要提交的内容
+## 9. 不要提交的内容
 
 公开仓库不要包含：
 
