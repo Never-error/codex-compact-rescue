@@ -50,7 +50,7 @@ staging="$(mktemp -d)"
 trap 'rm -rf "$staging"' EXIT
 
 mkdir -p "$staging/$package_name"
-cp "$root_dir/README.md" "$root_dir/LICENSE" "$root_dir/release/RELEASE_NOTES.md" "$staging/$package_name/"
+cp "$root_dir/README.md" "$root_dir/README.zh-CN.md" "$root_dir/LICENSE" "$root_dir/release/RELEASE_NOTES.md" "$staging/$package_name/"
 cp -R "$root_dir/docs" "$root_dir/patches" "$root_dir/scripts" "$staging/$package_name/"
 
 if [[ "$platform" == windows-* ]]; then

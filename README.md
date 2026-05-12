@@ -1,5 +1,9 @@
 # Codex gpt-5.5 Compact Fallback Patch
 
+Language: English | [简体中文](README.zh-CN.md)
+
+Repository: https://github.com/Never-error/codex-compact-rescue
+
 Patch and packaging workflow for making Codex Desktop `gpt-5.5` remote compact
 failures recoverable.
 
@@ -24,6 +28,8 @@ modified Codex application bundles.
 Use this prompt with a local coding agent that has access to the target machine:
 
 ```text
+Project repository: https://github.com/Never-error/codex-compact-rescue
+
 Install the Codex gpt-5.5 compact fallback patch on this machine.
 
 Rules:
@@ -82,6 +88,8 @@ verify
 build
 patches/
 docs/
+README.md
+README.zh-CN.md
 ```
 
 The installer must back up the user's current bundled CLI before replacement.
@@ -158,7 +166,7 @@ Use the PowerShell scripts with the Codex bundled CLI path for your installation
 
 ## Package A Release
 
-Create a platform patcher archive and checksum file:
+Create platform patcher archives and a checksum file:
 
 ```bash
 release/package.sh --version v0.1.0 --platform macos-universal --out-dir dist/release
@@ -206,6 +214,7 @@ rg -n 'model_provider|supports_websockets|responses_websockets' "$HOME/.codex/co
 ```text
 .
 ├── README.md
+├── README.zh-CN.md
 ├── LICENSE
 ├── ROADMAP.md
 ├── docs/
@@ -242,105 +251,6 @@ packaging workflow. `docs/` contains operator documentation.
 - Keep fallback scoped to failed remote compact retry.
 - Keep normal user turns on the configured default model.
 - Always create a rollback backup before replacing a bundled CLI.
-
-## 中文
-
-这个项目提供一个 Codex Desktop `gpt-5.5` remote compact 失败的补丁与打包流程。
-
-补丁目标是在 Codex 自己的 compact 出错路径里完成恢复：
-
-```text
-remote compact with gpt-5.5 fails
--> same turn 内部切到 fallback model
--> retry compact
--> install compacted history
--> emit context_compacted / thread compacted
--> continue 原 turn
-```
-
-本仓库面向 patcher 发布，不发布修改后的 Codex App 整包。
-
-### 给 Agent 的安装提示
-
-把这段交给本地 coding agent：
-
-```text
-在这台机器上安装 Codex gpt-5.5 compact fallback patch。
-
-规则：
-- 不要发布、上传或泄漏任何 Codex binary。
-- 自动识别平台和已安装的 Codex App 路径。
-- 替换任何文件前，必须备份现有 bundled Codex CLI。
-- 只安装带 remote compact fallback 行为的 patched bundled CLI。
-- 正常用户 turn 继续使用当前默认模型。
-- 只有 remote compact 失败时才使用 fallback model。
-- 用 hash 和补丁 marker 字符串验证安装结果。
-- 用本地 Codex 日志验证运行行为，不暴露 session 内容。
-- 输出回滚说明和备份路径。
-
-期望行为：
-remote compact with gpt-5.5 fails
--> same turn 内部切到 fallback model
--> retry compact
--> install compacted history
--> emit context_compacted / thread compacted
--> continue 原 turn
-```
-
-### macOS 安装形态
-
-```bash
-APP_PATH="/Applications/Codex.app"
-CODEX_BIN="$APP_PATH/Contents/Resources/codex"
-BACKUP_BIN="$APP_PATH/Contents/Resources/codex.backup-$(date +%Y%m%d-%H%M%S)"
-```
-
-备份并替换：
-
-```bash
-scripts/install.sh \
-  --codex-bin "$CODEX_BIN" \
-  --patched-bin ./dist/macos/codex \
-  --backup-dir "$APP_PATH/Contents/Resources" \
-  --yes
-```
-
-验证：
-
-```bash
-scripts/verify.sh --codex-bin "$CODEX_BIN"
-```
-
-回滚：
-
-```bash
-scripts/restore.sh --codex-bin "$CODEX_BIN" --backup "$BACKUP_BIN" --yes
-```
-
-### 运行时验证
-
-补丁存在和补丁触发是两件事。
-
-```bash
-strings /Applications/Codex.app/Contents/Resources/codex | \
-  rg 'retrying remote compaction with fallback model|gpt-5.4-mini|gpt-5.5'
-```
-
-```bash
-sqlite3 "$HOME/.codex/logs_2.sqlite" \
-  "select id, datetime(timestamp, 'unixepoch'), level, target, feedback_log_body
-   from logs
-   where target = 'codex_core::compact_remote'
-     and feedback_log_body like '%fallback model%'
-   order by id desc
-   limit 20;"
-```
-
-普通 compact 是否成功：
-
-```bash
-rg -n '"context_compacted"|type":"compacted"' "$HOME/.codex/sessions"
-```
 
 ## License
 

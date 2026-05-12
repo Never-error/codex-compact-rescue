@@ -10,6 +10,7 @@ patcher scripts.
 - Source patch under `patches/`
 - Build, install, restore, and verify scripts under `scripts/`
 - Operator documentation under `docs/`
+- English and Simplified Chinese README files
 - SHA-256 checksums in `checksums.txt`
 
 ## Validation

@@ -90,13 +90,25 @@ assert_file_not_contains "$TARGET_BIN" "retrying remote compaction with fallback
   --platform linux-x64 \
   --out-dir "$PACKAGE_OUT" >/tmp/codex-package-test-linux.out
 
+"$ROOT_DIR/release/package.sh" \
+  --version test.1 \
+  --platform windows-x64 \
+  --out-dir "$PACKAGE_OUT" >/tmp/codex-package-test-windows.out
+
 test -f "$PACKAGE_OUT/codex-compact-fallback-test.1-macos-universal.tar.gz" ||
   fail "missing release package"
 test -f "$PACKAGE_OUT/codex-compact-fallback-test.1-linux-x64.tar.gz" ||
   fail "missing linux release package"
+test -f "$PACKAGE_OUT/codex-compact-fallback-test.1-windows-x64.zip" ||
+  fail "missing windows release package"
 test -f "$PACKAGE_OUT/checksums.txt" || fail "missing checksums.txt"
 assert_file_contains "$PACKAGE_OUT/checksums.txt" "codex-compact-fallback-test.1-macos-universal.tar.gz"
 assert_file_contains "$PACKAGE_OUT/checksums.txt" "codex-compact-fallback-test.1-linux-x64.tar.gz"
+assert_file_contains "$PACKAGE_OUT/checksums.txt" "codex-compact-fallback-test.1-windows-x64.zip"
+tar -tzf "$PACKAGE_OUT/codex-compact-fallback-test.1-macos-universal.tar.gz" |
+  rg -q 'README.zh-CN.md' || fail "release package missing README.zh-CN.md"
+unzip -l "$PACKAGE_OUT/codex-compact-fallback-test.1-windows-x64.zip" |
+  rg -q 'README.zh-CN.md' || fail "windows release package missing README.zh-CN.md"
 
 (
   cd "$TMP_DIR"
