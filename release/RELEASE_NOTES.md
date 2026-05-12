@@ -12,6 +12,13 @@ patcher scripts.
 - Operator documentation under `docs/`
 - SHA-256 checksums in `checksums.txt`
 
+## Validation
+
+- The source patch applies cleanly to `codex-rs/core/src/compact_remote.rs`.
+- Script tests cover install, verify, restore, package creation, and checksum
+  generation with local fake binaries.
+- This release does not include a prebuilt patched Codex binary.
+
 ## Safety
 
 This release does not include a modified Codex application bundle. Installers
