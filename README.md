@@ -1,17 +1,24 @@
-# Codex Compact Rescue
+# Codex gpt-5.5 Compact Fallback Patch
 
-Codex Compact Rescue is an unofficial, local-first recovery project for Codex
-sessions that fail during remote context compaction.
+This project is focused on an unofficial patched Codex Desktop bundled binary
+that makes `gpt-5.5` remote compact failures recoverable.
 
-The local proof of concept was implemented by patching the Codex Desktop bundled
-CLI at the compact-failure path: when remote compact fails on a larger model,
-the same turn retries compaction with a smaller fallback model, installs the
-compacted history, emits the normal compaction events, and continues the
-original conversation.
+The patch targets the compact failure path inside the Codex CLI bundled with
+Codex Desktop. When remote compact fails on `gpt-5.5`, the same turn retries the
+compact operation with a fallback model, installs the compacted history, emits
+the normal compacted-thread events, and continues the original conversation.
 
-> This repository does not include or distribute patched Codex binaries. It is a
-> documentation and implementation-plan repository that describes the behavior,
-> verification workflow, and safer portable alternatives.
+```text
+remote compact with gpt-5.5 fails
+-> retry compact in the same turn with fallback model
+-> install compacted history
+-> emit context_compacted / thread compacted
+-> continue the original turn
+```
+
+> This repository does not publish the patched binary. It documents the patch
+> behavior, local install workflow, verification commands, upgrade risks, and
+> implementation notes needed to reproduce the behavior.
 
 ## Background
 
@@ -24,36 +31,30 @@ stream disconnected before completion: error sending request for url (https://ch
 ```
 
 When this happens, the user-facing turn can appear disconnected or stalled even
-though the underlying session still exists. Switching to a smaller model for the
-compact operation has been observed to succeed more reliably, so this project
-distinguishes two compatible recovery paths:
+though the underlying session still exists. The patched-binary approach keeps
+the recovery at the original failure site instead of asking the user to manually
+start a new thread or run a separate handoff flow.
 
-- **Internal fallback compact model:** retry the failed compact operation in the
-  same turn with a fallback model such as `gpt-5.4-mini`, then install compacted
-  history and emit the normal compaction events. This is the path used by the
-  local patched proof of concept.
-- **CLI original-session rescue:** detect compact failures from local logs and
-  resume the same thread with a maintenance-only turn that uses a smaller model
-  to trigger compaction. This is the safer portable fallback design documented
-  for open-source implementation.
+## Patch Scope
 
-The first path is closest to native automatic compaction. The second path is more
-portable because it can be built as a local command-line tool without shipping
-modified application binaries.
+The main project scope is the internal fallback compact path:
 
-## Local Patch Behavior
+- Default conversation model can remain `gpt-5.5`.
+- Only failed remote compact operations switch to the fallback compact model.
+- The fallback retry stays inside the same turn.
+- Successful fallback installs compacted history into the original thread.
+- The original Codex conversation continues after compaction.
 
-The internal patch is intended to behave like native automatic compaction:
+Out of scope for the main patch:
 
-```text
-remote compact with gpt-5.5 fails
--> same turn retries compact with fallback model
--> compacted history is installed
--> context_compacted / thread compacted event is emitted
--> original turn continues
-```
+- Publishing patched Codex application binaries.
+- Changing normal user turns to a smaller model.
+- Creating a new handoff session after compact failure.
+- Requiring users to manually resume a thread after every compact failure.
 
-Operationally, that means the patched Codex binary is a local machine artifact:
+## Patched Binary Workflow
+
+The patched Codex binary is a local machine artifact:
 
 1. Back up the original bundled CLI from the Codex app.
 2. Replace the bundled CLI with a patched build.
@@ -61,9 +62,16 @@ Operationally, that means the patched Codex binary is a local machine artifact:
 4. Use the fallback model only for the failed compact retry path.
 5. Verify behavior from local logs and session JSONL markers.
 
+Example local paths on macOS:
+
+```text
+/Applications/Codex.app/Contents/Resources/codex
+/Applications/Codex.app/Contents/Resources/codex.backup-<timestamp>
+```
+
 The repository intentionally avoids publishing the modified binary. A public
-implementation should ship source code, patch notes, tests, and runbooks rather
-than an opaque application replacement.
+implementation should ship source patches, patch notes, tests, and runbooks
+rather than an opaque application replacement.
 
 ## Repository Layout
 
@@ -73,41 +81,51 @@ than an opaque application replacement.
 ├── LICENSE
 ├── docs/
 │   ├── operations-zh.md
+│   ├── patched-binary-zh.md
 │   └── superpowers/plans/
 │       ├── 2026-05-10-codex-compact-rescue.md
 │       └── 2026-05-10-codex-compact-rescue-zh.md
 └── .gitignore
 ```
 
-The English and Chinese plan files contain the full feasibility analysis,
-implementation tasks, safety guards, and acceptance criteria. The operations
-runbook gives day-to-day verification commands.
+`README.md`, `docs/patched-binary-zh.md`, and `docs/operations-zh.md` describe
+the patched-binary workflow. The older plan files preserve the broader
+investigation, including the external CLI rescue design, but that design is now
+secondary to the patched-binary path.
 
-## Recommended Operating Model
+## Verification
 
-1. Keep normal Codex work on the preferred model, for example `gpt-5.5`.
-2. Detect compact failures from local Codex logs and session JSONL files.
-3. Retry only the compact/rescue step with a smaller model.
-4. Confirm that the original session records a `context_compacted` event.
-5. Continue working in the same Codex conversation.
+Check whether the installed bundled CLI still contains the patch markers:
 
-The rescue turn should be treated as infrastructure maintenance, not project
-work. It should not run tools, update goals, finish goals, or create a handoff
-thread.
+```bash
+shasum -a 256 /Applications/Codex.app/Contents/Resources/codex
+strings /Applications/Codex.app/Contents/Resources/codex | \
+  rg 'retrying remote compaction with fallback model|gpt-5.4-mini|gpt-5.5'
+```
 
-## Manual Verification
+Check whether fallback compact was actually triggered:
+
+```bash
+sqlite3 "$HOME/.codex/logs_2.sqlite" \
+  "select id, datetime(timestamp, 'unixepoch'), level, target, feedback_log_body
+   from logs
+   where target = 'codex_core::compact_remote'
+     and feedback_log_body like '%fallback model%'
+   order by id desc
+   limit 20;"
+```
+
+Check whether ordinary compaction succeeded in a session:
+
+```bash
+rg -n '"context_compacted"|type":"compacted"' "$HOME/.codex/sessions"
+```
 
 Check that Codex is using HTTP Responses instead of repeatedly retrying
 WebSocket transport:
 
 ```bash
 rg -n 'model_provider|supports_websockets|responses_websockets' "$HOME/.codex/config.toml"
-```
-
-Check whether compact success events exist in recent session files:
-
-```bash
-rg -n '"context_compacted"|type":"compacted"' "$HOME/.codex/sessions"
 ```
 
 Check whether remote compact failures were logged:
@@ -121,9 +139,23 @@ sqlite3 "$HOME/.codex/logs_2.sqlite" \
    limit 20;"
 ```
 
-## CLI Rescue Shape
+## Upgrade And Rollback
 
-The proposed local rescue command is intentionally conservative:
+Codex Desktop upgrades can overwrite the bundled CLI. After every app upgrade,
+re-run the binary and log verification commands above.
+
+Rollback is file-based:
+
+1. Quit Codex Desktop.
+2. Restore the backed-up original bundled CLI.
+3. Reopen Codex Desktop.
+4. Verify the binary hash and app behavior again.
+
+## Appendix: CLI Rescue
+
+An external CLI rescue layer was investigated earlier. It is not the main
+project focus, but it remains useful as a portable fallback for users who do not
+want to replace the bundled binary.
 
 ```bash
 codex exec resume <thread_id> \
@@ -146,16 +178,15 @@ post-run verification of a new `context_compacted` event.
   private project prompts in public artifacts.
 - Treat `~/.codex/logs_2.sqlite` and `~/.codex/sessions/**/*.jsonl` as local
   evidence sources, not files to commit.
-- Prefer fallback only for compaction/rescue, not for the user's normal model.
-- If a session appears to have an active unfinished turn, skip rescue.
+- Prefer fallback only for failed remote compact retry, not for normal user
+  turns.
+- Keep backup and rollback instructions next to any local binary replacement.
 
 ## Status
 
-This repository currently contains the local patch background, feasibility
-analysis, implementation plan, and operating runbook. The implementation plan is
-also written so it can be executed task-by-task into a standalone Python
-standard-library CLI for users who do not want to replace their local Codex
-binary.
+This repository is centered on the `gpt-5.5` compact fallback patched-binary
+approach. The CLI rescue material is retained as historical investigation and a
+secondary fallback design.
 
 ## License
 
