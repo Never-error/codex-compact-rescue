@@ -19,6 +19,12 @@ development status and release planning.
   - `scripts/restore.sh` and `scripts/restore.ps1` for rollback from backup.
   - `scripts/verify.sh` and `scripts/verify.ps1` for hash, marker-string, and
     local-log checks.
+  - `scripts/check-upstream-compat.sh` for validating upstream patch drift.
+
+- `docs/github-actions/`
+  - Upstream compatibility workflow template.
+  - Move the template into `.github/workflows/` with a token that has
+    `workflow` scope to enable scheduled checks.
 
 - `release/`
   - Platform package builder.
@@ -62,8 +68,8 @@ development status and release planning.
 
 1. Run a full Rust build against a clean upstream checkout for each supported
    Codex release target.
-2. Add CI that validates `git apply --check`, shell tests, and release
-   packaging.
+2. Enable the upstream compatibility workflow from `docs/github-actions/` once
+   GitHub credentials with `workflow` scope are available.
 3. Add platform-specific Codex app path discovery so install commands need fewer
    manual paths.
 4. Decide whether future releases should include root-level wrapper commands in

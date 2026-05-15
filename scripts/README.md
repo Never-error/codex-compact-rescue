@@ -5,9 +5,14 @@ live here.
 
 Expected script contracts:
 
-- `build`: build a patched bundled CLI from source and patches.
-- `install`: back up the installed bundled CLI, then replace it.
-- `restore`: restore a selected backup.
-- `verify`: check hash, marker strings, local logs, and basic install state.
+- `build.sh` / `build.ps1`: build a patched bundled CLI from source and patches.
+- `install.sh` / `install.ps1`: back up the installed bundled CLI, then replace it.
+- `restore.sh` / `restore.ps1`: restore a selected backup.
+- `verify.sh` / `verify.ps1`: check app metadata, CLI version, hash, marker strings,
+  local logs, optional upstream compatibility, and install state.
+  Default marker expectation is `any` for post-update health checks; pass
+  `--expect-marker present` / `-ExpectMarker present` after installation.
+- `check-upstream-compat.sh`: fetch the upstream compact target file and verify that
+  the source patch still applies.
 
 Scripts must not upload or publish Codex binaries.

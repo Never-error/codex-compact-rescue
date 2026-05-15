@@ -1,0 +1,55 @@
+name: Upstream compatibility
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "openai/codex ref to check"
+        required: false
+        default: "main"
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  compact-fallback-patch:
+    runs-on: ubuntu-latest
+    env:
+      UPSTREAM_REF: ${{ github.event.inputs.upstream_ref || 'main' }}
+      ISSUE_TITLE: Upstream compact_remote.rs no longer accepts fallback patch
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check upstream compatibility
+        id: compat
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          scripts/check-upstream-compat.sh --ref "$UPSTREAM_REF" | tee compat.log
+
+      - name: Upload compatibility log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-compatibility-log
+          path: compat.log
+
+      - name: Open compatibility issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh issue list --state open --search "$ISSUE_TITLE in:title" --json number --jq '.[0].number' | grep -Eq '^[0-9]+$'; then
+            echo "open_issue_exists=true"
+            exit 0
+          fi
+
+          gh issue create \
+            --title "$ISSUE_TITLE" \
+            --body-file compat.log

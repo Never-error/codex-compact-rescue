@@ -1,27 +1,40 @@
-# Release Notes
+# Release Notes v0.1.1
 
 ## Codex gpt-5.5 Compact Fallback Patch
 
-This release packages the source-level compact fallback patch and platform
-patcher scripts.
+This release refreshes upstream compatibility handling after the official Codex
+App and `openai/codex` prerelease updates.
 
-Compatible target for this patcher release:
+## Compatibility
 
-- `openai/codex` `codex-rs/core/src/compact_remote.rs`
-- Verified target blob: `cc31d50b13268417fa34d8262a7c3682cda8912e`
+- Stable `rust-v0.130.0`: `patch_applies_with_drift`
+- Prerelease `rust-v0.131.0-alpha.18`: `patch_applies`
+- Current `main`: `patch_applies`
 - Locally observed Codex Desktop bundled CLI: `codex-cli 0.130.0-alpha.5`
+
+## Changes
+
+- Add `scripts/check-upstream-compat.sh` for source-level compatibility checks.
+- Add a GitHub Actions workflow template for upstream compact patch drift under
+  `docs/github-actions/`.
+- Expand `scripts/verify.sh` and `scripts/verify.ps1` into post-update health
+  checks with app version, CLI version, hash, marker status, install state, and
+  optional upstream compatibility output.
+- Refresh English and Simplified Chinese README quick-start guidance.
 
 ## Assets
 
 - Source patch under `patches/`
 - Build, install, restore, and verify scripts under `scripts/`
+- Upstream compatibility checker under `scripts/`
 - Operator documentation under `docs/`
 - English and Simplified Chinese README files
 - SHA-256 checksums in `checksums.txt`
 
 ## Validation
 
-- The source patch applies cleanly to `codex-rs/core/src/compact_remote.rs`.
+- The source patch applies cleanly to `codex-rs/core/src/compact_remote.rs` for
+  `main`, `rust-v0.131.0-alpha.18`, and `rust-v0.130.0`.
 - Script tests cover install, verify, restore, package creation, and checksum
   generation with local fake binaries.
 - This release does not include a prebuilt patched Codex binary.

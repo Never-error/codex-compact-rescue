@@ -29,9 +29,16 @@ Current source patch:
 
 - Patch file: `patches/openai-codex-compact-fallback.patch`
 - Upstream target: `openai/codex` `codex-rs/core/src/compact_remote.rs`
-- Verified target blob: `cc31d50b13268417fa34d8262a7c3682cda8912e`
-- Checked date: 2026-05-12
+- Checked date: 2026-05-15
 - Locally observed Codex Desktop bundled CLI: `codex-cli 0.130.0-alpha.5`
+
+Verified upstream compatibility:
+
+| Upstream ref | Target blob | Result |
+| --- | --- | --- |
+| `main` | `cc31d50b13268417fa34d8262a7c3682cda8912e` | `patch_applies` |
+| `rust-v0.131.0-alpha.18` | `cc31d50b13268417fa34d8262a7c3682cda8912e` | `patch_applies` |
+| `rust-v0.130.0` | `35b8a01fc32fff7944b75670acbd5e33dff161af` | `patch_applies_with_drift` |
 
 Always run `git apply --check` against your OpenAI Codex checkout before
 building. If the upstream compact implementation changed, stop and rebase the
@@ -41,6 +48,12 @@ You can check the target file blob with:
 
 ```bash
 git -C /path/to/openai/codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
+```
+
+You can run the repository compatibility checker with:
+
+```bash
+scripts/check-upstream-compat.sh --ref rust-v0.131.0-alpha.18
 ```
 
 ## Quick Start
@@ -80,7 +93,10 @@ scripts/install.sh \
   --backup-dir "$APP_PATH/Contents/Resources" \
   --yes
 
-scripts/verify.sh --codex-bin "$CODEX_BIN"
+scripts/verify.sh \
+  --codex-bin "$CODEX_BIN" \
+  --expect-marker present \
+  --upstream-ref rust-v0.131.0-alpha.18
 ```
 
 Linux uses the same `scripts/build.sh`, `scripts/install.sh`, and
@@ -98,7 +114,7 @@ git -C C:\temp\openai-codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
 .\scripts\build.ps1 -SourceDir C:\temp\openai-codex -OutDir .\dist\windows
 
 .\scripts\install.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -PatchedBin ".\dist\windows\codex.exe" -Yes
-.\scripts\verify.ps1 -CodexBin "C:\Path\To\Codex\codex.exe"
+.\scripts\verify.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -ExpectMarker present -UpstreamRef rust-v0.131.0-alpha.18
 ```
 
 ## Install With An Agent
@@ -164,6 +180,7 @@ scripts/build.sh
 scripts/install.sh
 scripts/restore.sh
 scripts/verify.sh
+scripts/check-upstream-compat.sh
 scripts/build.ps1
 scripts/install.ps1
 scripts/restore.ps1
@@ -228,7 +245,10 @@ scripts/install.sh \
 Verify the installed binary:
 
 ```bash
-scripts/verify.sh --codex-bin "$CODEX_BIN"
+scripts/verify.sh \
+  --codex-bin "$CODEX_BIN" \
+  --expect-marker present \
+  --upstream-ref rust-v0.131.0-alpha.18
 ```
 
 Rollback:
@@ -252,14 +272,23 @@ Use the PowerShell scripts with the Codex bundled CLI path for your installation
 Create platform patcher archives and a checksum file:
 
 ```bash
-release/package.sh --version v0.1.0 --platform macos-universal --out-dir dist/release
-release/package.sh --version v0.1.0 --platform linux-x64 --out-dir dist/release
-release/package.sh --version v0.1.0 --platform windows-x64 --out-dir dist/release
+release/package.sh --version v0.1.1 --platform macos-universal --out-dir dist/release
+release/package.sh --version v0.1.1 --platform linux-x64 --out-dir dist/release
+release/package.sh --version v0.1.1 --platform windows-x64 --out-dir dist/release
 ```
 
 ## Runtime Verification
 
-Patch presence and patch trigger are separate checks.
+Patch presence, upstream compatibility, and patch trigger are separate checks.
+
+Run the post-update health check:
+
+```bash
+scripts/verify.sh \
+  --codex-bin /Applications/Codex.app/Contents/Resources/codex \
+  --expect-marker any \
+  --upstream-ref rust-v0.131.0-alpha.18
+```
 
 Check patch marker strings:
 

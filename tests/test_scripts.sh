@@ -37,6 +37,10 @@ RELATIVE_PACKAGE_OUT="$TMP_DIR/relative-packages"
 
 cat >"$ORIGINAL_BIN" <<'EOF_ORIGINAL'
 #!/usr/bin/env bash
+if [[ "${1:-}" == "--version" ]]; then
+  echo "codex-cli test-original"
+  exit 0
+fi
 echo original-codex
 EOF_ORIGINAL
 chmod 0755 "$ORIGINAL_BIN"
@@ -44,6 +48,10 @@ cp "$ORIGINAL_BIN" "$TARGET_BIN"
 
 cat >"$PATCHED_BIN" <<'EOF_PATCHED'
 #!/usr/bin/env bash
+if [[ "${1:-}" == "--version" ]]; then
+  echo "codex-cli test-patched"
+  exit 0
+fi
 echo "retrying remote compaction with fallback model"
 echo "gpt-5.4-mini"
 echo "gpt-5.5"
@@ -52,7 +60,9 @@ chmod 0755 "$PATCHED_BIN"
 
 "$ROOT_DIR/scripts/verify.sh" \
   --codex-bin "$TARGET_BIN" \
-  --expect-marker absent >/dev/null
+  --expect-marker absent >/tmp/codex-verify-absent.out
+assert_file_contains /tmp/codex-verify-absent.out "codex_cli_version=codex-cli test-original"
+assert_file_contains /tmp/codex-verify-absent.out "install_state=unpatched"
 
 "$ROOT_DIR/scripts/install.sh" \
   --codex-bin "$TARGET_BIN" \
@@ -70,7 +80,9 @@ assert_file_contains "$BACKUP_PATH" "original-codex"
 
 "$ROOT_DIR/scripts/verify.sh" \
   --codex-bin "$TARGET_BIN" \
-  --expect-marker present >/dev/null
+  --expect-marker present >/tmp/codex-verify-present.out
+assert_file_contains /tmp/codex-verify-present.out "codex_cli_version=codex-cli test-patched"
+assert_file_contains /tmp/codex-verify-present.out "install_state=patched"
 
 "$ROOT_DIR/scripts/restore.sh" \
   --codex-bin "$TARGET_BIN" \
@@ -107,8 +119,12 @@ assert_file_contains "$PACKAGE_OUT/checksums.txt" "codex-compact-fallback-test.1
 assert_file_contains "$PACKAGE_OUT/checksums.txt" "codex-compact-fallback-test.1-windows-x64.zip"
 tar -tzf "$PACKAGE_OUT/codex-compact-fallback-test.1-macos-universal.tar.gz" |
   rg -q 'README.zh-CN.md' || fail "release package missing README.zh-CN.md"
+tar -tzf "$PACKAGE_OUT/codex-compact-fallback-test.1-macos-universal.tar.gz" |
+  rg -q 'scripts/check-upstream-compat.sh' || fail "release package missing compatibility checker"
 unzip -l "$PACKAGE_OUT/codex-compact-fallback-test.1-windows-x64.zip" |
   rg -q 'README.zh-CN.md' || fail "windows release package missing README.zh-CN.md"
+unzip -l "$PACKAGE_OUT/codex-compact-fallback-test.1-windows-x64.zip" |
+  rg -q 'scripts/check-upstream-compat.sh' || fail "windows release package missing compatibility checker"
 
 (
   cd "$TMP_DIR"

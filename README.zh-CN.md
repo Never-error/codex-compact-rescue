@@ -28,9 +28,16 @@ remote compact with gpt-5.5 fails
 
 - 补丁文件：`patches/openai-codex-compact-fallback.patch`
 - 上游目标：`openai/codex` 的 `codex-rs/core/src/compact_remote.rs`
-- 已验证目标 blob：`cc31d50b13268417fa34d8262a7c3682cda8912e`
-- 检查日期：2026-05-12
+- 检查日期：2026-05-15
 - 本机观测到的 Codex Desktop bundled CLI：`codex-cli 0.130.0-alpha.5`
+
+已验证的上游兼容性：
+
+| 上游 ref | 目标 blob | 结果 |
+| --- | --- | --- |
+| `main` | `cc31d50b13268417fa34d8262a7c3682cda8912e` | `patch_applies` |
+| `rust-v0.131.0-alpha.18` | `cc31d50b13268417fa34d8262a7c3682cda8912e` | `patch_applies` |
+| `rust-v0.130.0` | `35b8a01fc32fff7944b75670acbd5e33dff161af` | `patch_applies_with_drift` |
 
 构建前必须先对你的 OpenAI Codex checkout 运行 `git apply --check`。如果上游
 compact 实现已经变化，应停止并重新 rebase 补丁，不要强行应用。
@@ -39,6 +46,12 @@ compact 实现已经变化，应停止并重新 rebase 补丁，不要强行应�
 
 ```bash
 git -C /path/to/openai/codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
+```
+
+也可以运行仓库自带的兼容性检查：
+
+```bash
+scripts/check-upstream-compat.sh --ref rust-v0.131.0-alpha.18
 ```
 
 ## 快速开始
@@ -77,7 +90,10 @@ scripts/install.sh \
   --backup-dir "$APP_PATH/Contents/Resources" \
   --yes
 
-scripts/verify.sh --codex-bin "$CODEX_BIN"
+scripts/verify.sh \
+  --codex-bin "$CODEX_BIN" \
+  --expect-marker present \
+  --upstream-ref rust-v0.131.0-alpha.18
 ```
 
 Linux 使用同一套 `scripts/build.sh`、`scripts/install.sh` 和
@@ -94,7 +110,7 @@ git -C C:\temp\openai-codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
 .\scripts\build.ps1 -SourceDir C:\temp\openai-codex -OutDir .\dist\windows
 
 .\scripts\install.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -PatchedBin ".\dist\windows\codex.exe" -Yes
-.\scripts\verify.ps1 -CodexBin "C:\Path\To\Codex\codex.exe"
+.\scripts\verify.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -ExpectMarker present -UpstreamRef rust-v0.131.0-alpha.18
 ```
 
 ## 用 Agent 安装
@@ -161,6 +177,7 @@ scripts/build.sh
 scripts/install.sh
 scripts/restore.sh
 scripts/verify.sh
+scripts/check-upstream-compat.sh
 scripts/build.ps1
 scripts/install.ps1
 scripts/restore.ps1
@@ -222,7 +239,10 @@ scripts/install.sh \
 验证安装后的 binary：
 
 ```bash
-scripts/verify.sh --codex-bin "$CODEX_BIN"
+scripts/verify.sh \
+  --codex-bin "$CODEX_BIN" \
+  --expect-marker present \
+  --upstream-ref rust-v0.131.0-alpha.18
 ```
 
 回滚：
@@ -246,14 +266,23 @@ scripts/restore.sh --codex-bin "$CODEX_BIN" --backup "$BACKUP_BIN" --yes
 生成平台 patcher 归档和 checksum 文件：
 
 ```bash
-release/package.sh --version v0.1.0 --platform macos-universal --out-dir dist/release
-release/package.sh --version v0.1.0 --platform linux-x64 --out-dir dist/release
-release/package.sh --version v0.1.0 --platform windows-x64 --out-dir dist/release
+release/package.sh --version v0.1.1 --platform macos-universal --out-dir dist/release
+release/package.sh --version v0.1.1 --platform linux-x64 --out-dir dist/release
+release/package.sh --version v0.1.1 --platform windows-x64 --out-dir dist/release
 ```
 
 ## 运行时验证
 
-补丁存在和补丁触发是两个不同检查。
+补丁存在、上游兼容性和补丁触发是三个不同检查。
+
+运行升级后体检：
+
+```bash
+scripts/verify.sh \
+  --codex-bin /Applications/Codex.app/Contents/Resources/codex \
+  --expect-marker any \
+  --upstream-ref rust-v0.131.0-alpha.18
+```
 
 检查补丁 marker 字符串：
 
