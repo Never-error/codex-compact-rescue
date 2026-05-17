@@ -216,6 +216,19 @@ git apply patches/openai-codex-compact-fallback.patch
 cargo build -p codex-cli --bin codex --release
 ```
 
+The script accepts either the upstream repository root or its `codex-rs/`
+workspace directory. If the LiveKit WebRTC prebuilt package download times out
+during the Rust build, download and unzip the matching package once, then point
+`LK_CUSTOM_WEBRTC` at the extracted triple directory:
+
+```bash
+export LK_CUSTOM_WEBRTC=/path/to/mac-arm64-release
+scripts/build.sh \
+  --source-dir /path/to/openai/codex \
+  --patch-file patches/openai-codex-compact-fallback.patch \
+  --out-dir dist/macos
+```
+
 Windows users can use the PowerShell equivalent:
 
 ```powershell

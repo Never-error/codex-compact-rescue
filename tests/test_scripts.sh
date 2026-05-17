@@ -34,6 +34,10 @@ TARGET_BIN="$TMP_DIR/codex"
 BACKUP_DIR="$TMP_DIR/backups"
 PACKAGE_OUT="$TMP_DIR/packages"
 RELATIVE_PACKAGE_OUT="$TMP_DIR/relative-packages"
+BUILD_SOURCE="$TMP_DIR/source-with-codex-rs"
+BUILD_OUT="$TMP_DIR/build-out"
+FAKE_BIN_DIR="$TMP_DIR/fake-bin"
+BUILD_PATCH="$TMP_DIR/build.patch"
 
 cat >"$ORIGINAL_BIN" <<'EOF_ORIGINAL'
 #!/usr/bin/env bash
@@ -137,5 +141,41 @@ unzip -l "$PACKAGE_OUT/codex-compact-fallback-test.1-windows-x64.zip" |
 test -f "$RELATIVE_PACKAGE_OUT/codex-compact-fallback-test.2-macos-universal.tar.gz" ||
   fail "missing package for relative out dir"
 test -f "$RELATIVE_PACKAGE_OUT/checksums.txt" || fail "missing checksums for relative out dir"
+
+mkdir -p "$BUILD_SOURCE/codex-rs" "$FAKE_BIN_DIR"
+cat >"$BUILD_SOURCE/marker.txt" <<'EOF_MARKER'
+before
+EOF_MARKER
+cat >"$BUILD_SOURCE/codex-rs/Cargo.toml" <<'EOF_CARGO'
+[workspace]
+members = []
+EOF_CARGO
+cat >"$BUILD_PATCH" <<'EOF_PATCH'
+diff --git a/marker.txt b/marker.txt
+index 1089609..21b779a 100644
+--- a/marker.txt
++++ b/marker.txt
+@@ -1 +1 @@
+-before
++after
+EOF_PATCH
+cat >"$FAKE_BIN_DIR/cargo" <<'EOF_CARGO_BIN'
+#!/usr/bin/env bash
+mkdir -p target/release
+cat > target/release/codex <<'EOF_FAKE_CODEX'
+#!/usr/bin/env bash
+echo built-from-codex-rs
+EOF_FAKE_CODEX
+chmod 0755 target/release/codex
+EOF_CARGO_BIN
+chmod 0755 "$FAKE_BIN_DIR/cargo"
+PATH="$FAKE_BIN_DIR:$PATH" "$ROOT_DIR/scripts/build.sh" \
+  --source-dir "$BUILD_SOURCE" \
+  --patch-file "$BUILD_PATCH" \
+  --out-dir "$BUILD_OUT" >/tmp/codex-build-layout-test.out
+
+test -x "$BUILD_OUT/codex" || fail "build script did not copy codex-rs target binary"
+assert_file_contains "$BUILD_SOURCE/marker.txt" "after"
+assert_file_contains "$BUILD_OUT/codex" "built-from-codex-rs"
 
 echo "ok"

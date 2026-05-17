@@ -50,10 +50,23 @@ done
 [[ -d "$source_dir" ]] || { echo "source dir not found: $source_dir" >&2; exit 1; }
 [[ -f "$patch_file" ]] || { echo "patch file not found: $patch_file" >&2; exit 1; }
 
+cargo_dir="$source_dir"
+if [[ ! -f "$cargo_dir/Cargo.toml" && -f "$source_dir/codex-rs/Cargo.toml" ]]; then
+  cargo_dir="$source_dir/codex-rs"
+fi
+[[ -f "$cargo_dir/Cargo.toml" ]] || {
+  echo "Cargo.toml not found in $source_dir or $source_dir/codex-rs" >&2
+  exit 1
+}
+
 (
   cd "$source_dir"
   git apply --check "$patch_file"
   git apply "$patch_file"
+)
+
+(
+  cd "$cargo_dir"
   # shellcheck disable=SC2086
   cargo $cargo_args
 )
@@ -64,5 +77,5 @@ if [[ "$(uname -s)" == "MINGW"* || "$(uname -s)" == "MSYS"* || "$(uname -s)" == 
   binary_name="codex.exe"
 fi
 
-cp "$source_dir/target/release/$binary_name" "$out_dir/$binary_name"
+cp "$cargo_dir/target/release/$binary_name" "$out_dir/$binary_name"
 echo "built=$out_dir/$binary_name"

@@ -210,6 +210,18 @@ git apply patches/openai-codex-compact-fallback.patch
 cargo build -p codex-cli --bin codex --release
 ```
 
+脚本既可以接收上游仓库根目录，也可以接收 `codex-rs/` workspace 目录。
+如果 Rust 构建时 LiveKit WebRTC 预编译包下载超时，可以先手动下载并解压匹配
+平台的包，再把 `LK_CUSTOM_WEBRTC` 指向解压后的 triple 目录：
+
+```bash
+export LK_CUSTOM_WEBRTC=/path/to/mac-arm64-release
+scripts/build.sh \
+  --source-dir /path/to/openai/codex \
+  --patch-file patches/openai-codex-compact-fallback.patch \
+  --out-dir dist/macos
+```
+
 Windows 用户可以使用 PowerShell 版本：
 
 ```powershell
