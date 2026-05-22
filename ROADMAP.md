@@ -16,6 +16,9 @@ development status and release planning.
     bundled CLI.
   - `scripts/install.sh` and `scripts/install.ps1` for backing up and replacing
     the bundled CLI.
+  - `scripts/patch-macos-codex-app.sh` for the Codex Desktop macOS no-resign
+    app workflow, including external backups, signature-state recording, and
+    running process checks.
   - `scripts/restore.sh` and `scripts/restore.ps1` for rollback from backup.
   - `scripts/verify.sh` and `scripts/verify.ps1` for hash, marker-string, and
     local-log checks.
@@ -51,7 +54,8 @@ development status and release planning.
 
 - Platform scripts:
   - Unix/macOS/Linux: `scripts/build.sh`, `scripts/install.sh`,
-    `scripts/restore.sh`, `scripts/verify.sh`
+    `scripts/patch-macos-codex-app.sh`, `scripts/restore.sh`,
+    `scripts/verify.sh`
   - Windows PowerShell: `scripts/build.ps1`, `scripts/install.ps1`,
     `scripts/restore.ps1`, `scripts/verify.ps1`
 

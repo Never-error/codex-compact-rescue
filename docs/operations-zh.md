@@ -108,12 +108,21 @@ sqlite3 "$HOME/.codex/logs_2.sqlite" \
 /Applications/Codex.app/Contents/Resources/codex
 ```
 
-替换前必须备份：
+推荐用仓库脚本完成备份、替换和验证：
 
 ```bash
-cp /Applications/Codex.app/Contents/Resources/codex \
-  /Applications/Codex.app/Contents/Resources/codex.backup-$(date +%Y%m%d-%H%M%S)
+APP_PATH="/Applications/Codex.app"
+
+scripts/patch-macos-codex-app.sh \
+  --app-path "$APP_PATH" \
+  --patched-bin ./dist/macos/codex \
+  --upstream-ref rust-v0.133.0-alpha.1 \
+  --move-bundle-backups \
+  --yes
 ```
+
+如果脚本在外部终端执行，可以加 `--quit-app` 先退出 Codex 和 Sparkle updater；
+如果脚本在 Codex Desktop 自己里面执行，不要加 `--quit-app`，安装后手动重启。
 
 验证补丁是否仍在当前 Codex App 内：
 

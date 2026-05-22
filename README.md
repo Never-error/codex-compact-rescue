@@ -29,14 +29,16 @@ Current source patch:
 
 - Patch file: `patches/openai-codex-compact-fallback.patch`
 - Upstream target: `openai/codex` `codex-rs/core/src/compact_remote.rs`
-- Checked date: 2026-05-15
-- Locally observed Codex Desktop bundled CLI: `codex-cli 0.130.0-alpha.5`
+- Checked date: 2026-05-23
+- Locally observed Codex Desktop bundled CLI: `codex-cli 0.133.0-alpha.1`
 
 Verified upstream compatibility:
 
 | Upstream ref | Target blob | Result |
 | --- | --- | --- |
-| `main` | `cc31d50b13268417fa34d8262a7c3682cda8912e` | `patch_applies` |
+| `main` | `30d1e5f0e84129ac5d3da3f327c8a24c6a199717` | `patch_applies_with_drift` |
+| `rust-v0.133.0` | `c7ba1a314f611d59a0181403115a051f2ff32b3b` | `patch_applies_with_drift` |
+| `rust-v0.133.0-alpha.1` | `c7ba1a314f611d59a0181403115a051f2ff32b3b` | `patch_applies_with_drift` |
 | `rust-v0.131.0-alpha.18` | `cc31d50b13268417fa34d8262a7c3682cda8912e` | `patch_applies` |
 | `rust-v0.130.0` | `35b8a01fc32fff7944b75670acbd5e33dff161af` | `patch_applies_with_drift` |
 
@@ -53,7 +55,7 @@ git -C /path/to/openai/codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
 You can run the repository compatibility checker with:
 
 ```bash
-scripts/check-upstream-compat.sh --ref rust-v0.131.0-alpha.18
+scripts/check-upstream-compat.sh --ref rust-v0.133.0-alpha.1
 ```
 
 ## Quick Start
@@ -87,17 +89,17 @@ scripts/build.sh --source-dir /tmp/openai-codex --out-dir dist/macos
 APP_PATH="/Applications/Codex.app"
 CODEX_BIN="$APP_PATH/Contents/Resources/codex"
 
-scripts/install.sh \
-  --codex-bin "$CODEX_BIN" \
+scripts/patch-macos-codex-app.sh \
+  --app-path "$APP_PATH" \
   --patched-bin dist/macos/codex \
-  --backup-dir "$APP_PATH/Contents/Resources" \
-  --macos-app-mode no-resign \
+  --upstream-ref rust-v0.133.0-alpha.1 \
+  --move-bundle-backups \
   --yes
 
 scripts/verify.sh \
   --codex-bin "$CODEX_BIN" \
   --expect-marker present \
-  --upstream-ref rust-v0.131.0-alpha.18
+  --upstream-ref rust-v0.133.0-alpha.1
 ```
 
 Linux uses the same `scripts/build.sh`, `scripts/install.sh`, and
@@ -115,7 +117,7 @@ git -C C:\temp\openai-codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
 .\scripts\build.ps1 -SourceDir C:\temp\openai-codex -OutDir .\dist\windows
 
 .\scripts\install.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -PatchedBin ".\dist\windows\codex.exe" -Yes
-.\scripts\verify.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -ExpectMarker present -UpstreamRef rust-v0.131.0-alpha.18
+.\scripts\verify.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -ExpectMarker present -UpstreamRef rust-v0.133.0-alpha.1
 ```
 
 ## Install With An Agent
@@ -179,6 +181,7 @@ Each platform package provides:
 ```text
 scripts/build.sh
 scripts/install.sh
+scripts/patch-macos-codex-app.sh
 scripts/restore.sh
 scripts/verify.sh
 scripts/check-upstream-compat.sh
@@ -259,7 +262,37 @@ a macOS app mode:
 Test the mode on your exact Codex Desktop version before using it as your daily
 driver. Keep an official app restore path ready.
 
-Backup and replace, using the explicit no-resign mode:
+For Codex Desktop on macOS, prefer the app-aware wrapper:
+
+```bash
+scripts/patch-macos-codex-app.sh \
+  --app-path "$APP_PATH" \
+  --patched-bin ./dist/macos/codex \
+  --upstream-ref rust-v0.133.0-alpha.1 \
+  --move-bundle-backups \
+  --yes
+```
+
+The wrapper uses `scripts/install.sh --macos-app-mode no-resign` internally and
+adds the checks that matter for recent Codex Desktop builds:
+
+- backs up the current bundled CLI outside the app bundle;
+- optionally moves stale `Contents/Resources/codex.backup-*` files out of the
+  app bundle before signature checks;
+- verifies the patched binary has the same `codex-cli` version as the installed
+  binary;
+- verifies fallback marker strings before and after replacement;
+- records pre/post signature state without ad-hoc re-signing the app;
+- checks whether a running `app-server` process is still using the previous
+  binary inode;
+- prints a rollback command.
+
+If running from an external terminal, add `--quit-app` before `--yes` to ask
+Codex and Sparkle updater processes to exit first. If running from inside Codex
+Desktop, omit `--quit-app`, then restart Codex after installation.
+
+The lower-level install command remains available when you already know the
+target is not a macOS app bundle:
 
 ```bash
 scripts/install.sh \
@@ -270,13 +303,19 @@ scripts/install.sh \
   --yes
 ```
 
+After no-resign replacement, `codesign --verify --deep --strict
+/Applications/Codex.app` is expected to report an invalid sealed resource for
+`Contents/Resources/codex`. Do not use `--macos-app-mode adhoc-resign` unless
+you have verified that your Codex Desktop build still launches after ad-hoc
+signing.
+
 Verify the installed binary:
 
 ```bash
 scripts/verify.sh \
   --codex-bin "$CODEX_BIN" \
   --expect-marker present \
-  --upstream-ref rust-v0.131.0-alpha.18
+  --upstream-ref rust-v0.133.0-alpha.1
 ```
 
 Rollback:
@@ -315,7 +354,7 @@ Run the post-update health check:
 scripts/verify.sh \
   --codex-bin /Applications/Codex.app/Contents/Resources/codex \
   --expect-marker any \
-  --upstream-ref rust-v0.131.0-alpha.18
+  --upstream-ref rust-v0.133.0-alpha.1
 ```
 
 Check patch marker strings:
@@ -366,6 +405,7 @@ rg -n 'model_provider|supports_websockets|responses_websockets' "$HOME/.codex/co
 ├── scripts/
 │   ├── build.sh
 │   ├── install.sh
+│   ├── patch-macos-codex-app.sh
 │   ├── restore.sh
 │   ├── verify.sh
 │   ├── build.ps1

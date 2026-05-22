@@ -30,6 +30,7 @@ assert_file_not_contains() {
 
 ORIGINAL_BIN="$TMP_DIR/codex-original"
 PATCHED_BIN="$TMP_DIR/codex-patched"
+PATCH_APP_ORIGINAL_BIN="$TMP_DIR/codex-patch-app-original"
 TARGET_BIN="$TMP_DIR/codex"
 BACKUP_DIR="$TMP_DIR/backups"
 PACKAGE_OUT="$TMP_DIR/packages"
@@ -39,6 +40,7 @@ BUILD_OUT="$TMP_DIR/build-out"
 FAKE_BIN_DIR="$TMP_DIR/fake-bin"
 BUILD_PATCH="$TMP_DIR/build.patch"
 FAKE_APP="$TMP_DIR/FakeCodex.app"
+PATCH_APP="$TMP_DIR/PatchCodex.app"
 
 cat >"$ORIGINAL_BIN" <<'EOF_ORIGINAL'
 #!/usr/bin/env bash
@@ -62,6 +64,16 @@ echo "gpt-5.4-mini"
 echo "gpt-5.5"
 EOF_PATCHED
 chmod 0755 "$PATCHED_BIN"
+
+cat >"$PATCH_APP_ORIGINAL_BIN" <<'EOF_PATCH_APP_ORIGINAL'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "--version" ]]; then
+  echo "codex-cli test-patched"
+  exit 0
+fi
+echo original-codex-for-patch-app
+EOF_PATCH_APP_ORIGINAL
+chmod 0755 "$PATCH_APP_ORIGINAL_BIN"
 
 "$ROOT_DIR/scripts/verify.sh" \
   --codex-bin "$TARGET_BIN" \
@@ -116,6 +128,53 @@ assert_file_contains /tmp/codex-install-app-refuse.err "Refusing to mutate a sig
   --yes >/tmp/codex-install-app-no-resign.out
 assert_file_contains "$FAKE_APP/Contents/Resources/codex" "retrying remote compaction with fallback model"
 
+mkdir -p "$PATCH_APP/Contents/Resources"
+cat >"$PATCH_APP/Contents/Info.plist" <<'EOF_PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleShortVersionString</key>
+  <string>test-app-version</string>
+  <key>CFBundleVersion</key>
+  <string>test-build</string>
+</dict>
+</plist>
+EOF_PLIST
+cp "$PATCH_APP_ORIGINAL_BIN" "$PATCH_APP/Contents/Resources/codex"
+cat >"$PATCH_APP/Contents/Resources/codex.backup-in-bundle" <<'EOF_BUNDLE_BACKUP'
+stale in-bundle backup
+EOF_BUNDLE_BACKUP
+
+if "$ROOT_DIR/scripts/patch-macos-codex-app.sh" \
+  --app-path "$PATCH_APP" \
+  --patched-bin "$PATCHED_BIN" \
+  --backup-root "$BACKUP_DIR/patch-app" \
+  --skip-upstream-check >/tmp/codex-patch-app-no-yes.out 2>/tmp/codex-patch-app-no-yes.err; then
+  fail "patch app script should require --yes"
+fi
+assert_file_contains /tmp/codex-patch-app-no-yes.err "Refusing to patch"
+
+"$ROOT_DIR/scripts/patch-macos-codex-app.sh" \
+  --app-path "$PATCH_APP" \
+  --patched-bin "$PATCHED_BIN" \
+  --backup-root "$BACKUP_DIR/patch-app" \
+  --allow-invalid-signature \
+  --move-bundle-backups \
+  --skip-upstream-check \
+  --yes >/tmp/codex-patch-app-test.out
+assert_file_contains /tmp/codex-patch-app-test.out "install_state=patched"
+assert_file_contains /tmp/codex-patch-app-test.out "runtime_state=no_running_app_server"
+assert_file_contains /tmp/codex-patch-app-test.out "moved_bundle_backups=1"
+assert_file_contains "$PATCH_APP/Contents/Resources/codex" "retrying remote compaction with fallback model"
+test ! -f "$PATCH_APP/Contents/Resources/codex.backup-in-bundle" ||
+  fail "patch app script did not move in-bundle backup out of app"
+test -f "$BACKUP_DIR/patch-app/bundle-backups/codex.backup-in-bundle" ||
+  fail "patch app script did not preserve moved in-bundle backup"
+PATCH_APP_BACKUP="$(sed -n 's/^backup=//p' /tmp/codex-patch-app-test.out | tail -n 1)"
+test -f "$PATCH_APP_BACKUP" || fail "patch app script did not create backup"
+
 "$ROOT_DIR/release/package.sh" \
   --version test.1 \
   --platform macos-universal \
@@ -145,6 +204,8 @@ tar -tzf "$PACKAGE_OUT/codex-compact-fallback-test.1-macos-universal.tar.gz" |
   rg -q 'README.zh-CN.md' || fail "release package missing README.zh-CN.md"
 tar -tzf "$PACKAGE_OUT/codex-compact-fallback-test.1-macos-universal.tar.gz" |
   rg -q 'scripts/check-upstream-compat.sh' || fail "release package missing compatibility checker"
+tar -tzf "$PACKAGE_OUT/codex-compact-fallback-test.1-macos-universal.tar.gz" |
+  rg -q 'scripts/patch-macos-codex-app.sh' || fail "release package missing macOS patch script"
 unzip -l "$PACKAGE_OUT/codex-compact-fallback-test.1-windows-x64.zip" |
   rg -q 'README.zh-CN.md' || fail "windows release package missing README.zh-CN.md"
 unzip -l "$PACKAGE_OUT/codex-compact-fallback-test.1-windows-x64.zip" |

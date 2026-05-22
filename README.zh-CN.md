@@ -28,14 +28,16 @@ remote compact with gpt-5.5 fails
 
 - 补丁文件：`patches/openai-codex-compact-fallback.patch`
 - 上游目标：`openai/codex` 的 `codex-rs/core/src/compact_remote.rs`
-- 检查日期：2026-05-15
-- 本机观测到的 Codex Desktop bundled CLI：`codex-cli 0.130.0-alpha.5`
+- 检查日期：2026-05-23
+- 本机观测到的 Codex Desktop bundled CLI：`codex-cli 0.133.0-alpha.1`
 
 已验证的上游兼容性：
 
 | 上游 ref | 目标 blob | 结果 |
 | --- | --- | --- |
-| `main` | `cc31d50b13268417fa34d8262a7c3682cda8912e` | `patch_applies` |
+| `main` | `30d1e5f0e84129ac5d3da3f327c8a24c6a199717` | `patch_applies_with_drift` |
+| `rust-v0.133.0` | `c7ba1a314f611d59a0181403115a051f2ff32b3b` | `patch_applies_with_drift` |
+| `rust-v0.133.0-alpha.1` | `c7ba1a314f611d59a0181403115a051f2ff32b3b` | `patch_applies_with_drift` |
 | `rust-v0.131.0-alpha.18` | `cc31d50b13268417fa34d8262a7c3682cda8912e` | `patch_applies` |
 | `rust-v0.130.0` | `35b8a01fc32fff7944b75670acbd5e33dff161af` | `patch_applies_with_drift` |
 
@@ -51,7 +53,7 @@ git -C /path/to/openai/codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
 也可以运行仓库自带的兼容性检查：
 
 ```bash
-scripts/check-upstream-compat.sh --ref rust-v0.131.0-alpha.18
+scripts/check-upstream-compat.sh --ref rust-v0.133.0-alpha.1
 ```
 
 ## 快速开始
@@ -84,17 +86,17 @@ scripts/build.sh --source-dir /tmp/openai-codex --out-dir dist/macos
 APP_PATH="/Applications/Codex.app"
 CODEX_BIN="$APP_PATH/Contents/Resources/codex"
 
-scripts/install.sh \
-  --codex-bin "$CODEX_BIN" \
+scripts/patch-macos-codex-app.sh \
+  --app-path "$APP_PATH" \
   --patched-bin dist/macos/codex \
-  --backup-dir "$APP_PATH/Contents/Resources" \
-  --macos-app-mode no-resign \
+  --upstream-ref rust-v0.133.0-alpha.1 \
+  --move-bundle-backups \
   --yes
 
 scripts/verify.sh \
   --codex-bin "$CODEX_BIN" \
   --expect-marker present \
-  --upstream-ref rust-v0.131.0-alpha.18
+  --upstream-ref rust-v0.133.0-alpha.1
 ```
 
 Linux 使用同一套 `scripts/build.sh`、`scripts/install.sh` 和
@@ -111,7 +113,7 @@ git -C C:\temp\openai-codex rev-parse HEAD:codex-rs/core/src/compact_remote.rs
 .\scripts\build.ps1 -SourceDir C:\temp\openai-codex -OutDir .\dist\windows
 
 .\scripts\install.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -PatchedBin ".\dist\windows\codex.exe" -Yes
-.\scripts\verify.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -ExpectMarker present -UpstreamRef rust-v0.131.0-alpha.18
+.\scripts\verify.ps1 -CodexBin "C:\Path\To\Codex\codex.exe" -ExpectMarker present -UpstreamRef rust-v0.133.0-alpha.1
 ```
 
 ## 用 Agent 安装
@@ -176,6 +178,7 @@ checksums.txt
 ```text
 scripts/build.sh
 scripts/install.sh
+scripts/patch-macos-codex-app.sh
 scripts/restore.sh
 scripts/verify.sh
 scripts/check-upstream-compat.sh
@@ -250,7 +253,34 @@ BACKUP_BIN="$APP_PATH/Contents/Resources/codex.backup-$(date +%Y%m%d-%H%M%S)"
 在作为日常 App 使用前，应先在你的 Codex Desktop 精确版本上验证该模式，并保留
 官方 App 恢复路径。
 
-备份并替换，显式使用 no-resign 模式：
+macOS Codex Desktop 推荐使用 App 感知的封装脚本：
+
+```bash
+scripts/patch-macos-codex-app.sh \
+  --app-path "$APP_PATH" \
+  --patched-bin ./dist/macos/codex \
+  --upstream-ref rust-v0.133.0-alpha.1 \
+  --move-bundle-backups \
+  --yes
+```
+
+这个脚本内部使用 `scripts/install.sh --macos-app-mode no-resign`，并把这次实际
+踩过的检查流程固化进去：
+
+- 当前 bundled CLI 会备份到 App bundle 外部；
+- 可选把 `Contents/Resources/codex.backup-*` 旧备份搬出 App bundle，避免影响签名
+  校验和官方更新；
+- 检查 patched binary 与当前安装的 `codex-cli` 版本一致；
+- 替换前后都检查 fallback marker 字符串；
+- 记录替换前后的签名状态，但不对 App 做 ad-hoc re-sign；
+- 检查运行中的 `app-server` 是否还在使用旧 inode；
+- 输出可直接执行的 rollback 命令。
+
+如果是在外部终端执行，可以在 `--yes` 前加 `--quit-app`，让脚本先退出 Codex 和
+Sparkle updater 进程。如果是在 Codex Desktop 自己里面执行，不要加 `--quit-app`，
+安装完成后手动重启 Codex。
+
+底层安装脚本仍然可用于非 macOS App bundle 的场景：
 
 ```bash
 scripts/install.sh \
@@ -261,13 +291,18 @@ scripts/install.sh \
   --yes
 ```
 
+no-resign 替换完成后，`codesign --verify --deep --strict /Applications/Codex.app`
+预期会报告 `Contents/Resources/codex` sealed resource invalid。不要使用
+`--macos-app-mode adhoc-resign`，除非你已经验证当前 Codex Desktop 版本在 ad-hoc
+签名后仍能正常打开。
+
 验证安装后的 binary：
 
 ```bash
 scripts/verify.sh \
   --codex-bin "$CODEX_BIN" \
   --expect-marker present \
-  --upstream-ref rust-v0.131.0-alpha.18
+  --upstream-ref rust-v0.133.0-alpha.1
 ```
 
 回滚：
@@ -306,7 +341,7 @@ release/package.sh --version v0.1.1 --platform windows-x64 --out-dir dist/releas
 scripts/verify.sh \
   --codex-bin /Applications/Codex.app/Contents/Resources/codex \
   --expect-marker any \
-  --upstream-ref rust-v0.131.0-alpha.18
+  --upstream-ref rust-v0.133.0-alpha.1
 ```
 
 检查补丁 marker 字符串：
@@ -357,6 +392,7 @@ rg -n 'model_provider|supports_websockets|responses_websockets' "$HOME/.codex/co
 ├── scripts/
 │   ├── build.sh
 │   ├── install.sh
+│   ├── patch-macos-codex-app.sh
 │   ├── restore.sh
 │   ├── verify.sh
 │   ├── build.ps1

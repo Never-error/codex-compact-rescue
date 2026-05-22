@@ -27,15 +27,22 @@ macOS Codex Desktop 的 bundled CLI 位于：
 /Applications/Codex.app/Contents/Resources/codex
 ```
 
-安装补丁前必须备份原始文件，例如：
+安装补丁前必须备份原始文件。macOS Codex Desktop 推荐使用封装脚本，让备份保存在
+App bundle 外部，并自动完成版本、marker、签名状态和运行态检查：
 
 ```bash
-cp /Applications/Codex.app/Contents/Resources/codex \
-  /Applications/Codex.app/Contents/Resources/codex.backup-$(date +%Y%m%d-%H%M%S)
+APP_PATH="/Applications/Codex.app"
+
+scripts/patch-macos-codex-app.sh \
+  --app-path "$APP_PATH" \
+  --patched-bin ./dist/macos/codex \
+  --upstream-ref rust-v0.133.0-alpha.1 \
+  --move-bundle-backups \
+  --yes
 ```
 
-然后再用 patched binary 替换原文件。公开仓库不发布 patched binary，只记录补丁
-行为、验证方法和可复现实现计划。
+脚本内部采用 no-resign 替换，不对 Codex.app 做 ad-hoc re-sign。公开仓库不发布
+patched binary，只记录补丁行为、验证方法和可复现实现计划。
 
 ## 3. 验证补丁是否还在
 
