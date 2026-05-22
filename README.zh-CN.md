@@ -88,6 +88,7 @@ scripts/install.sh \
   --codex-bin "$CODEX_BIN" \
   --patched-bin dist/macos/codex \
   --backup-dir "$APP_PATH/Contents/Resources" \
+  --macos-app-mode no-resign \
   --yes
 
 scripts/verify.sh \
@@ -238,13 +239,25 @@ CODEX_BIN="$APP_PATH/Contents/Resources/codex"
 BACKUP_BIN="$APP_PATH/Contents/Resources/codex.backup-$(date +%Y%m%d-%H%M%S)"
 ```
 
-备份并替换：
+当前 Codex Desktop 对 App bundle 签名检查更严格。安装脚本默认拒绝修改
+`/Applications/Codex.app`，必须显式选择 macOS App 模式：
+
+- `--macos-app-mode no-resign`：只替换 bundled CLI，不重签外层 App；这样会让
+  `CodeResources` 与文件内容不一致。
+- `--macos-app-mode adhoc-resign`：替换 bundled CLI 后对外层 `.app` 做 ad-hoc
+  签名；GUI 可能因为不再满足 OpenAI designated requirement 而启动失败。
+
+在作为日常 App 使用前，应先在你的 Codex Desktop 精确版本上验证该模式，并保留
+官方 App 恢复路径。
+
+备份并替换，显式使用 no-resign 模式：
 
 ```bash
 scripts/install.sh \
   --codex-bin "$CODEX_BIN" \
   --patched-bin ./dist/macos/codex \
   --backup-dir "$APP_PATH/Contents/Resources" \
+  --macos-app-mode no-resign \
   --yes
 ```
 

@@ -38,6 +38,7 @@ BUILD_SOURCE="$TMP_DIR/source-with-codex-rs"
 BUILD_OUT="$TMP_DIR/build-out"
 FAKE_BIN_DIR="$TMP_DIR/fake-bin"
 BUILD_PATCH="$TMP_DIR/build.patch"
+FAKE_APP="$TMP_DIR/FakeCodex.app"
 
 cat >"$ORIGINAL_BIN" <<'EOF_ORIGINAL'
 #!/usr/bin/env bash
@@ -95,6 +96,25 @@ assert_file_contains /tmp/codex-verify-present.out "install_state=patched"
 
 assert_file_contains "$TARGET_BIN" "original-codex"
 assert_file_not_contains "$TARGET_BIN" "retrying remote compaction with fallback model"
+
+mkdir -p "$FAKE_APP/Contents/Resources"
+cp "$ORIGINAL_BIN" "$FAKE_APP/Contents/Resources/codex"
+if "$ROOT_DIR/scripts/install.sh" \
+  --codex-bin "$FAKE_APP/Contents/Resources/codex" \
+  --patched-bin "$PATCHED_BIN" \
+  --backup-dir "$BACKUP_DIR" \
+  --yes >/tmp/codex-install-app-refuse.out 2>/tmp/codex-install-app-refuse.err; then
+  fail "macOS app bundle install should require explicit mode"
+fi
+assert_file_contains /tmp/codex-install-app-refuse.err "Refusing to mutate a signed macOS Codex.app bundle"
+
+"$ROOT_DIR/scripts/install.sh" \
+  --codex-bin "$FAKE_APP/Contents/Resources/codex" \
+  --patched-bin "$PATCHED_BIN" \
+  --backup-dir "$BACKUP_DIR" \
+  --macos-app-mode no-resign \
+  --yes >/tmp/codex-install-app-no-resign.out
+assert_file_contains "$FAKE_APP/Contents/Resources/codex" "retrying remote compaction with fallback model"
 
 "$ROOT_DIR/release/package.sh" \
   --version test.1 \

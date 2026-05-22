@@ -91,6 +91,7 @@ scripts/install.sh \
   --codex-bin "$CODEX_BIN" \
   --patched-bin dist/macos/codex \
   --backup-dir "$APP_PATH/Contents/Resources" \
+  --macos-app-mode no-resign \
   --yes
 
 scripts/verify.sh \
@@ -245,13 +246,27 @@ CODEX_BIN="$APP_PATH/Contents/Resources/codex"
 BACKUP_BIN="$APP_PATH/Contents/Resources/codex.backup-$(date +%Y%m%d-%H%M%S)"
 ```
 
-Backup and replace:
+Current Codex Desktop builds perform stricter app-bundle signature checks. The
+installer refuses to mutate `/Applications/Codex.app` unless you explicitly pick
+a macOS app mode:
+
+- `--macos-app-mode no-resign`: replace the bundled CLI only. This preserves the
+  outer Developer ID signature bytes but leaves `CodeResources` invalid.
+- `--macos-app-mode adhoc-resign`: replace the bundled CLI and ad-hoc sign the
+  outer `.app`. This can make the GUI fail to launch because the app no longer
+  satisfies OpenAI's designated requirement.
+
+Test the mode on your exact Codex Desktop version before using it as your daily
+driver. Keep an official app restore path ready.
+
+Backup and replace, using the explicit no-resign mode:
 
 ```bash
 scripts/install.sh \
   --codex-bin "$CODEX_BIN" \
   --patched-bin ./dist/macos/codex \
   --backup-dir "$APP_PATH/Contents/Resources" \
+  --macos-app-mode no-resign \
   --yes
 ```
 

@@ -3,11 +3,17 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/install.sh --codex-bin PATH --patched-bin PATH [--backup-dir DIR] [--no-resign-app] [--yes]
+Usage: scripts/install.sh --codex-bin PATH --patched-bin PATH [--backup-dir DIR] [--macos-app-mode MODE] [--yes]
 
 Back up an installed Codex bundled CLI and replace it with a patched binary.
-When installing into a macOS .app bundle, the outer app bundle is ad-hoc signed
-after replacement so CodeResources accepts the new Resources/codex hash.
+
+MODE controls macOS .app bundle installs:
+  refuse       default; do not mutate a signed .app bundle
+  no-resign    replace only; leaves the official bundle signature invalid
+  adhoc-resign replace, then ad-hoc sign the outer .app; may break GUI launch
+
+For current Codex Desktop builds, .app bundle replacement is intentionally
+opt-in because both no-resign and ad-hoc resign can break GUI startup.
 USAGE
 }
 
@@ -15,7 +21,7 @@ codex_bin=""
 patched_bin=""
 backup_dir=""
 assume_yes="false"
-resign_app="auto"
+macos_app_mode="refuse"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,9 +41,9 @@ while [[ $# -gt 0 ]]; do
       assume_yes="true"
       shift
       ;;
-    --no-resign-app)
-      resign_app="false"
-      shift
+    --macos-app-mode)
+      macos_app_mode="${2:-}"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -56,8 +62,33 @@ done
 [[ -f "$codex_bin" ]] || { echo "codex binary not found: $codex_bin" >&2; exit 1; }
 [[ -f "$patched_bin" ]] || { echo "patched binary not found: $patched_bin" >&2; exit 1; }
 
+case "$macos_app_mode" in
+  refuse|no-resign|adhoc-resign)
+    ;;
+  *)
+    echo "--macos-app-mode must be refuse, no-resign, or adhoc-resign" >&2
+    exit 2
+    ;;
+esac
+
 if [[ "$assume_yes" != "true" ]]; then
   echo "Refusing to replace $codex_bin without --yes" >&2
+  exit 2
+fi
+
+is_macos_app_bundle="false"
+if [[ "$(uname -s)" == "Darwin" && "$codex_bin" == *.app/Contents/Resources/codex ]]; then
+  is_macos_app_bundle="true"
+fi
+
+if [[ "$is_macos_app_bundle" == "true" && "$macos_app_mode" == "refuse" ]]; then
+  cat >&2 <<'ERROR'
+Refusing to mutate a signed macOS Codex.app bundle by default.
+
+Use --macos-app-mode no-resign or --macos-app-mode adhoc-resign only after
+testing that mode on your Codex Desktop version. Recent Codex Desktop builds can
+fail to launch after either direct resource replacement or ad-hoc re-signing.
+ERROR
   exit 2
 fi
 
@@ -89,9 +120,7 @@ fi
 echo "backup=$backup_path"
 echo "installed=$codex_bin"
 
-if [[ "$resign_app" == "auto" &&
-      "$(uname -s)" == "Darwin" &&
-      "$codex_bin" == *.app/Contents/Resources/codex ]]; then
+if [[ "$is_macos_app_bundle" == "true" && "$macos_app_mode" == "adhoc-resign" ]]; then
   app_path="${codex_bin%/Contents/Resources/codex}"
   if command -v codesign >/dev/null; then
     codesign --force --sign - --preserve-metadata=entitlements,requirements,flags,runtime "$app_path" >/dev/null
