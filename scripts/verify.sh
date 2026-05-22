@@ -73,14 +73,36 @@ if [[ -n "$app_path" && -f "$app_path/Contents/Info.plist" ]] &&
   app_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_path/Contents/Info.plist" 2>/dev/null || echo unknown)"
 fi
 
-cli_version="$("$codex_bin" --version 2>/dev/null | head -n 1 || true)"
-[[ -n "$cli_version" ]] || cli_version="unknown"
-
 strings_file="$(mktemp)"
+version_stdout_file="$(mktemp)"
+version_stderr_file="$(mktemp)"
 cleanup() {
-  rm -f "$strings_file"
+  rm -f "$strings_file" "$version_stdout_file" "$version_stderr_file"
 }
 trap cleanup EXIT
+
+cli_version_status="ok"
+"$codex_bin" --version >"$version_stdout_file" 2>"$version_stderr_file" &
+version_pid="$!"
+for _ in {1..50}; do
+  if ! kill -0 "$version_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+
+if kill -0 "$version_pid" 2>/dev/null; then
+  kill "$version_pid" 2>/dev/null || true
+  wait "$version_pid" 2>/dev/null || true
+  cli_version_status="timeout"
+else
+  if ! wait "$version_pid"; then
+    cli_version_status="error"
+  fi
+fi
+
+cli_version="$(head -n 1 "$version_stdout_file" || true)"
+[[ -n "$cli_version" ]] || cli_version="unknown"
 strings "$codex_bin" >"$strings_file"
 
 marker_present="false"
@@ -116,6 +138,7 @@ echo "app_path=${app_path:-unknown}"
 echo "app_version=$app_version"
 echo "app_build=$app_build"
 echo "codex_cli_version=$cli_version"
+echo "codex_cli_version_status=$cli_version_status"
 echo "patch_marker=$marker_present"
 shasum -a 256 "$codex_bin" | awk '{print "sha256="$1}'
 
